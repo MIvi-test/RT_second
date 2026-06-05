@@ -2,3 +2,7 @@
 !.gitignore
 dataset_case3_v1.0_fix
 # test.ipynb
+chroma_ready_chunks.json
+chroma_db
+__pycache__
+results.json
