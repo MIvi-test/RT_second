@@ -60,3 +60,16 @@
 - Эмбеддинги: intfloat/multilingual-e5-large
 - Реранкер: BAAI/bge-reranker-v2-m3
 Если мы хотим оптимизацию по памяти и т.д., то есть куда сокращать
+
+#### установка зависимостей:
+сначало установите uv.
+**windows:**
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh | iex"`
+**linux:**
+`curl -LsSf https://astral.sh | sh`
+или
+`sudo pacman -S uv`
+далее 
+`uv sync`
+для запуска проекта
+`uv run index.py`

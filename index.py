@@ -1,8 +1,11 @@
 import pickle
+from rank_bm25 import BM25Okapi
+import traceback
 import ast
 import subprocess
 import sys
 import re
+import json
 from pathlib import Path
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -42,8 +45,6 @@ def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
         src = py_file.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(src)
     except (SyntaxError, Exception) as e:
-        import traceback
-
         traceback.print_exc()
         return []
 
@@ -121,7 +122,7 @@ def main() -> int:
     try:
         embed_model = SentenceTransformer(MODEL_NAME)
     except Exception as e:
-        import traceback
+        
 
         traceback.print_exc()
         return 1
@@ -132,8 +133,7 @@ def main() -> int:
 
     # build and save BM25 index and metadata
     try:
-        import pickle
-        from rank_bm25 import BM25Okapi
+        
 
         tokenized_corpus = [tokenize_code(doc) for doc in documents]
         bm25 = BM25Okapi(tokenized_corpus)
@@ -142,10 +142,9 @@ def main() -> int:
             pickle.dump(bm25, f)
 
         with open(SCRIPT_DIR / "bm25_meta.json", "w", encoding="utf-8") as f:
-            import json
+            
             json.dump(metadatas, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        import traceback
         traceback.print_exc()
         return 1
     
@@ -155,7 +154,6 @@ def main() -> int:
             documents, batch_size=32, show_progress_bar=False, convert_to_numpy=True
         )
     except Exception as e:
-        import traceback
 
         traceback.print_exc()
         return 1
@@ -182,8 +180,6 @@ def main() -> int:
                 metadatas=metadatas[i:end],
             )
     except Exception as e:
-        import traceback
-
         traceback.print_exc()
         return 1
 
