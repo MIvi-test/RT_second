@@ -64,12 +64,34 @@
 #### установка зависимостей:
 сначало установите uv.
 **windows:**
-`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh | iex"`
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
 **linux:**
-`curl -LsSf https://astral.sh | sh`
+`curl -LsSf https://astral.sh/uv/install.sh | sh`
 или
 `sudo pacman -S uv`
 далее 
 `uv sync`
 для запуска проекта
 `uv run index.py`
+`uv run streamlit run app.py`
+
+---
+
+# Реализация LLM (RAG)
+
+## 1. Модуль llm.py
+
+- **Клиент Ollama.** Используется пакет `ollama` (`pip install ollama`). Перед запуском UI нужен сервер: `ollama serve`, модель: `ollama pull mistral:7b`.
+- **check_ollama().** При старте UI проверяется доступность Ollama и наличие модели `mistral:7b`. Если сервер не запущен или модель не скачана — переключатель LLM отключается, показывается понятное сообщение.
+- **generate_rag_answer().** В промпт передаются исходный вопрос и топ-5 найденных фрагментов (путь, имя, код, оценка релевантности). Тексты чанков подгружаются из ChromaDB по `chunk_id`.
+- **Ответ.** Связный человекочитаемый текст на языке вопроса; выводится под карточками результатов поиска.
+
+## 2. Интерфейс (app.py)
+
+- На основной странице — переключатель «Включить LLM-ответ» и кнопка «Поиск».
+- Поиск через `hybrid_search` (топ-5). При включённом LLM после карточек вызывается `generate_rag_answer`.
+
+#### запуск UI с LLM:
+1. `ollama serve` (в отдельном терминале)
+2. `ollama pull mistral:7b` (один раз)
+3. `uv run streamlit run app.py`
