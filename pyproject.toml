@@ -11,4 +11,5 @@ dependencies = [
     "rank-bm25>=0.2.2",
     "sentence-transformers>=5.5.1",
     "streamlit>=1.45.0",
+    "torchvision>=0.27.0",
 ]

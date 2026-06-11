@@ -1,0 +1,71 @@
+version: '3.8'
+
+services:
+  # Сервис Ollama для работы с локальной LLM
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Инициализация модели и индексация исходного кода
+  init-and-index:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: code-init-index
+    volumes:
+      # Подставляем путь через переменную SOURCE_PATH. Если она пустая — берем дефолтный путь.
+      - ${SOURCE_PATH:-./dataset_case3_v1.0_fix}:/app/dataset_case3_v1.0_fix
+      - chroma_data:/app/chroma_db
+      - ollama_data:/root/.ollama
+      - ./bm25_index.pkl:/app/bm25_index.pkl
+      - ./bm25_meta.json:/app/bm25_meta.json
+      - ./results.json:/app/results.json
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    command: >
+      sh -c "
+        echo 'Pulling mistral:7b...' &&
+        ollama pull mistral:7b &&
+        echo 'Building search index...' &&
+        python index.py
+      "
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  # Веб-интерфейс приложения на Streamlit
+  streamlit-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: streamlit-search
+    ports:
+      - "8501:8501"
+    volumes:
+      - chroma_data:/app/chroma_db
+      - ./bm25_index.pkl:/app/bm25_index.pkl
+      - ./bm25_meta.json:/app/bm25_meta.json
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+volumes:
+  ollama_data:
+  chroma_data:
