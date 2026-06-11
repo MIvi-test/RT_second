@@ -24,6 +24,7 @@ DEFAULT_PREDICTIONS = SCRIPT_DIR / "results.json"
 DEFAULT_QUESTIONS = SCRIPT_DIR / "dataset_case3_v1.0_fix" / "eval_questions.json"
 SCORE_SCRIPT = SCRIPT_DIR / "dataset_case3_v1.0_fix" / "score.py"
 
+
 def get_node_source(lines: list[str], node: ast.AST) -> str:
     start_line = node.lineno - 1
     end_line = getattr(node, "end_lineno", len(lines))
@@ -51,62 +52,55 @@ def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
     lines = src.splitlines()
     chunks = []
 
+    # Обходим только верхнеуровневые узлы, чтобы жестко контролировать вложенность
     for node in tree.body:
-        if isinstance(node, ast.ClassDef):
-            class_id = f"{rel_path}:{node.name}:{node.lineno}"
+        # 1. Если это изолированная функция верхнего уровня
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            source_code = get_node_source(lines, node)
+            chunk_id = f"{rel_path}:{node.name}:{node.lineno}"
             chunks.append(
                 {
                     "id": class_id,
                     "document": f"File path: {rel_path}\nObject type: {node.__class__.__name__}\nObject name: {node.name}\nCode:\n{get_node_source(lines, node)}",
                     "metadata": {
-                        "chunk_id": class_id,
                         "file_path": rel_path,
-                        "type": "class",
                         "name": node.name,
+                        "type": "function",
                         "start_line": node.lineno,
+                        "end_line": getattr(node, "end_lineno", node.lineno),
                     },
                 }
             )
 
+        # 2. Если это класс, извлекаем ТОЛЬКО его методы, исключая дублирование всего класса
+        elif isinstance(node, ast.ClassDef):
             for sub_node in node.body:
                 if isinstance(sub_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    method_name = f"{node.name}.{sub_node.name}"
-                    method_id = f"{rel_path}:{method_name}:{sub_node.lineno}"
+                    source_code = get_node_source(lines, sub_node)
+                    chunk_id = (
+                        f"{rel_path}:{node.name}.{sub_node.name}:{sub_node.lineno}"
+                    )
                     chunks.append(
                         {
-                            "id": method_id,
-                            "document": get_node_source(lines, sub_node),
+                            "id": chunk_id,
+                            "document": source_code,
                             "metadata": {
-                                "chunk_id": method_id,
                                 "file_path": rel_path,
+                                "name": f"{node.name}.{sub_node.name}",
                                 "type": "method",
-                                "name": method_name,
                                 "start_line": sub_node.lineno,
+                                "end_line": getattr(
+                                    node, "end_lineno", sub_node.lineno
+                                ),
                             },
                         }
                     )
-
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            func_id = f"{rel_path}:{node.name}:{node.lineno}"
-            chunks.append(
-                {
-                    "id": func_id,
-                    "document": get_node_source(lines, node),
-                    "metadata": {
-                        "chunk_id": func_id,
-                        "file_path": rel_path,
-                        "type": "function",
-                        "name": node.name,
-                        "start_line": node.lineno,
-                    },
-                }
-            )
-
     return chunks
 
 
 def main() -> int:
     if not REPO_ROOT.exists():
+        print(f"Ошибка: Путь к репозиторию {REPO_ROOT} не найден.")
         return 1
 
     all_chunks = []
@@ -116,6 +110,7 @@ def main() -> int:
 
     # nothing to index
     if not all_chunks:
+        print("Внимание: Не найдено подходящих чанков кода для индексации.")
         return 0
 
     # load sentence transformer model for embeddings
@@ -166,8 +161,14 @@ def main() -> int:
         except Exception:
             pass
 
+        # Тюнинг HNSW-индекса под маленький датасет для максимального Precision@5
         collection = client.create_collection(
-            name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
+            name=COLLECTION_NAME,
+            metadata={
+                "hnsw:space": "cosine",
+                "hnsw:construction_ef": 200,
+                "hnsw:M": 32,
+            },
         )
 
         batch_size = 200
@@ -183,11 +184,13 @@ def main() -> int:
         traceback.print_exc()
         return 1
 
+    # === АВТОМАТИЧЕСКИЙ ВЫЗОВ СКРИПТА ОЦЕНКИ ===
     if (
         SCORE_SCRIPT.exists()
         and DEFAULT_PREDICTIONS.exists()
         and DEFAULT_QUESTIONS.exists()
     ):
+        print("\n--- Запуск утилиты оценки score.py ---")
         subprocess.run(
             [
                 sys.executable,
