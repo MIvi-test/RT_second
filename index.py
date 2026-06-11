@@ -1,5 +1,5 @@
+import os
 import pickle
-from rank_bm25 import BM25Okapi
 import traceback
 import ast
 import subprocess
@@ -7,167 +7,193 @@ import sys
 import re
 import json
 from pathlib import Path
+
 import chromadb
+from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
-# Build an embeddings index and BM25 index from repository Python files.
-# - extract functions/classes into chunks
-# - compute embeddings and store them in ChromaDB
-# - build and save a BM25 index for hybrid search
+# Indexes Python source files into ChromaDB (embeddings) and BM25 (keyword search).
+# Paths come from env vars so the same script works locally and in Docker.
+#
+#   SOURCE_PATH  – dataset root  (default: ./dataset_case3_v1.0_fix)
+#   STORAGE_DIR  – index output  (default: ./storage)
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR / "dataset_case3_v1.0_fix" / "gymhero"
-CHROMA_PATH = SCRIPT_DIR / "chroma_db"
+
+_SOURCE_PATH = Path(os.environ.get("SOURCE_PATH", SCRIPT_DIR / "dataset_case3_v1.0_fix"))
+_STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
+
+REPO_ROOT = _SOURCE_PATH / "gymhero"  # actual code lives one level deeper
+
+CHROMA_PATH = _STORAGE_DIR / "chroma_db"
+BM25_INDEX  = _STORAGE_DIR / "bm25_index.pkl"
+BM25_META   = _STORAGE_DIR / "bm25_meta.json"
+
+# Optional eval files – indexing succeeds even if these are absent
+DEFAULT_PREDICTIONS = _SOURCE_PATH / "results.json"
+DEFAULT_QUESTIONS   = _SOURCE_PATH / "eval_questions.json"
+SCORE_SCRIPT        = _SOURCE_PATH / "score.py"
+
 COLLECTION_NAME = "code_chunks"
-MODEL_NAME = "intfloat/multilingual-e5-large" #"sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-DEFAULT_PREDICTIONS = SCRIPT_DIR / "results.json"
-DEFAULT_QUESTIONS = SCRIPT_DIR / "dataset_case3_v1.0_fix" / "eval_questions.json"
-SCORE_SCRIPT = SCRIPT_DIR / "dataset_case3_v1.0_fix" / "score.py"
+MODEL_NAME      = "intfloat/multilingual-e5-large"
 
 
 def get_node_source(lines: list[str], node: ast.AST) -> str:
-    start_line = node.lineno - 1
-    end_line = getattr(node, "end_lineno", len(lines))
-    return "\n".join(lines[start_line:end_line])
+    """Return the source lines that belong to an AST node."""
+    return "\n".join(lines[node.lineno - 1 : getattr(node, "end_lineno", len(lines))])
 
-# Split code-like text into tokens for BM25
 
 def tokenize_code(text: str) -> list[str]:
-    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)
-    text = re.sub(r'[^a-zA-Zа-яА-Я0-9]', ' ', text)
+    """Normalize and split code into BM25-friendly tokens."""
+    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)   # split camelCase
+    text = re.sub(r'[^a-zA-Zа-яА-Я0-9]', ' ', text)   # drop punctuation
     return text.lower().split()
 
-def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
-    pure_rel_path = py_file.relative_to(repo_root).as_posix()
-    rel_path = f"{pure_rel_path}"
 
-    # parse file into AST and extract top-level functions and classes
+def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
+    """Parse one file and return a chunk per top-level function / class method."""
+    rel_path = py_file.relative_to(repo_root).as_posix()
+
     try:
-        src = py_file.read_text(encoding="utf-8", errors="replace")
+        src  = py_file.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(src)
-    except (SyntaxError, Exception) as e:
+    except Exception:
+        print(f"[WARN] Could not parse {py_file}")
         traceback.print_exc()
         return []
 
-    lines = src.splitlines()
+    lines  = src.splitlines()
     chunks = []
 
-    # Обходим только верхнеуровневые узлы, чтобы жестко контролировать вложенность
     for node in tree.body:
-        # 1. Если это изолированная функция верхнего уровня
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            source_code = get_node_source(lines, node)
             chunk_id = f"{rel_path}:{node.name}:{node.lineno}"
-            chunks.append(
-                {
-                    "id": class_id,
-                    "document": f"File path: {rel_path}\nObject type: {node.__class__.__name__}\nObject name: {node.name}\nCode:\n{get_node_source(lines, node)}",
-                    "metadata": {
-                        "file_path": rel_path,
-                        "name": node.name,
-                        "type": "function",
-                        "start_line": node.lineno,
-                        "end_line": getattr(node, "end_lineno", node.lineno),
-                    },
-                }
-            )
+            chunks.append({
+                "id": chunk_id,
+                "document": (
+                    f"File path: {rel_path}\n"
+                    f"Object type: {node.__class__.__name__}\n"
+                    f"Object name: {node.name}\n"
+                    f"Code:\n{get_node_source(lines, node)}"
+                ),
+                "metadata": {
+                    "file_path":  rel_path,
+                    "name":       node.name,
+                    "type":       "function",
+                    "start_line": node.lineno,
+                    "end_line":   getattr(node, "end_lineno", node.lineno),
+                },
+            })
 
-        # 2. Если это класс, извлекаем ТОЛЬКО его методы, исключая дублирование всего класса
         elif isinstance(node, ast.ClassDef):
+            # Index methods individually – avoids duplicating the whole class body
             for sub_node in node.body:
                 if isinstance(sub_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    source_code = get_node_source(lines, sub_node)
-                    chunk_id = (
-                        f"{rel_path}:{node.name}.{sub_node.name}:{sub_node.lineno}"
-                    )
-                    chunks.append(
-                        {
-                            "id": chunk_id,
-                            "document": source_code,
-                            "metadata": {
-                                "file_path": rel_path,
-                                "name": f"{node.name}.{sub_node.name}",
-                                "type": "method",
-                                "start_line": sub_node.lineno,
-                                "end_line": getattr(
-                                    node, "end_lineno", sub_node.lineno
-                                ),
-                            },
-                        }
-                    )
+                    chunk_id = f"{rel_path}:{node.name}.{sub_node.name}:{sub_node.lineno}"
+                    chunks.append({
+                        "id": chunk_id,
+                        "document": (
+                            f"File path: {rel_path}\n"
+                            f"Object type: {sub_node.__class__.__name__}\n"
+                            f"Object name: {node.name}.{sub_node.name}\n"
+                            f"Code:\n{get_node_source(lines, sub_node)}"
+                        ),
+                        "metadata": {
+                            "file_path":  rel_path,
+                            "name":       f"{node.name}.{sub_node.name}",
+                            "type":       "method",
+                            "start_line": sub_node.lineno,
+                            "end_line":   getattr(sub_node, "end_lineno", sub_node.lineno),
+                        },
+                    })
+
     return chunks
 
 
 def main() -> int:
+    print(f"[index] SOURCE_PATH : {_SOURCE_PATH}")
+    print(f"[index] REPO_ROOT   : {REPO_ROOT}")
+    print(f"[index] STORAGE_DIR : {_STORAGE_DIR}")
+
     if not REPO_ROOT.exists():
-        print(f"Ошибка: Путь к репозиторию {REPO_ROOT} не найден.")
+        print(f"[ERROR] Repo root not found: {REPO_ROOT}")
         return 1
 
-    all_chunks = []
-    for py_file in REPO_ROOT.rglob("*.py"):
-        file_chunks = extract_chunks_from_file(py_file, REPO_ROOT)
-        all_chunks.extend(file_chunks)
+    _STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # nothing to index
+    # --- 1. Collect chunks from all Python files ---
+    py_files   = list(REPO_ROOT.rglob("*.py"))
+    all_chunks = []
+    print(f"[index] Scanning {len(py_files)} files …")
+
+    for py_file in py_files:
+        all_chunks.extend(extract_chunks_from_file(py_file, REPO_ROOT))
+
     if not all_chunks:
-        print("Внимание: Не найдено подходящих чанков кода для индексации.")
+        print("[WARN] No chunks found – nothing to index.")
         return 0
 
-    # load sentence transformer model for embeddings
+    print(f"[index] {len(all_chunks)} chunks extracted")
+
+    ids       = [c["id"]       for c in all_chunks]
+    documents = [c["document"] for c in all_chunks]
+    metadatas = [c["metadata"] for c in all_chunks]
+
+    # --- 2. BM25 keyword index ---
+    print("[index] Building BM25 index …")
     try:
-        embed_model = SentenceTransformer(MODEL_NAME)
-    except Exception as e:
-        
+        bm25 = BM25Okapi([tokenize_code(doc) for doc in documents])
 
-        traceback.print_exc()
-        return 1
-
-    ids = [item["id"] for item in all_chunks]
-    documents = [item["document"] for item in all_chunks]
-    metadatas = [item["metadata"] for item in all_chunks]
-
-    # build and save BM25 index and metadata
-    try:
-        
-
-        tokenized_corpus = [tokenize_code(doc) for doc in documents]
-        bm25 = BM25Okapi(tokenized_corpus)
-
-        with open(SCRIPT_DIR / "bm25_index.pkl", "wb") as f:
+        with open(BM25_INDEX, "wb") as f:
             pickle.dump(bm25, f)
 
-        with open(SCRIPT_DIR / "bm25_meta.json", "w", encoding="utf-8") as f:
-            
+        with open(BM25_META, "w", encoding="utf-8") as f:
             json.dump(metadatas, f, ensure_ascii=False, indent=2)
-    except Exception as e:
+
+        print(f"[index] BM25 saved → {BM25_INDEX}")
+    except Exception:
+        print("[ERROR] BM25 build failed")
         traceback.print_exc()
         return 1
-    
-    # compute embeddings for all chunks
+
+    # --- 3. Compute embeddings ---
+    print(f"[index] Loading {MODEL_NAME} …")
+    try:
+        embed_model = SentenceTransformer(MODEL_NAME)
+    except Exception:
+        print(f"[ERROR] Could not load model '{MODEL_NAME}'")
+        traceback.print_exc()
+        return 1
+
+    print(f"[index] Encoding {len(documents)} chunks …")
     try:
         chunk_embeddings = embed_model.encode(
-            documents, batch_size=32, show_progress_bar=False, convert_to_numpy=True
+            documents,
+            batch_size=32,
+            show_progress_bar=True,
+            convert_to_numpy=True,
         )
-    except Exception as e:
-
+    except Exception:
+        print("[ERROR] Encoding failed")
         traceback.print_exc()
         return 1
 
-    # store embeddings in ChromaDB (persistent)
+    # --- 4. Store vectors in ChromaDB ---
+    print(f"[index] Writing ChromaDB → {CHROMA_PATH} …")
     try:
         client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+
         try:
-            client.delete_collection(COLLECTION_NAME)
+            client.delete_collection(COLLECTION_NAME)  # drop stale index on re-run
         except Exception:
             pass
 
-        # Тюнинг HNSW-индекса под маленький датасет для максимального Precision@5
         collection = client.create_collection(
             name=COLLECTION_NAME,
             metadata={
-                "hnsw:space": "cosine",
-                "hnsw:construction_ef": 200,
-                "hnsw:M": 32,
+                "hnsw:space":           "cosine",
+                "hnsw:construction_ef": 200,   # higher = better recall, slower build
+                "hnsw:M":               32,
             },
         )
 
@@ -180,29 +206,27 @@ def main() -> int:
                 documents=documents[i:end],
                 metadatas=metadatas[i:end],
             )
-    except Exception as e:
+            print(f"[index]   batch {i}–{end}")
+
+        print(f"[index] ChromaDB ready – {len(documents)} vectors in '{COLLECTION_NAME}'")
+    except Exception:
+        print("[ERROR] ChromaDB write failed")
         traceback.print_exc()
         return 1
 
-    # === АВТОМАТИЧЕСКИЙ ВЫЗОВ СКРИПТА ОЦЕНКИ ===
-    if (
-        SCORE_SCRIPT.exists()
-        and DEFAULT_PREDICTIONS.exists()
-        and DEFAULT_QUESTIONS.exists()
-    ):
-        print("\n--- Запуск утилиты оценки score.py ---")
+    # --- 5. Run evaluation if eval files are present ---
+    if SCORE_SCRIPT.exists() and DEFAULT_PREDICTIONS.exists() and DEFAULT_QUESTIONS.exists():
+        print("\n[index] Running score.py …")
         subprocess.run(
-            [
-                sys.executable,
-                str(SCORE_SCRIPT),
-                "--predictions",
-                str(DEFAULT_PREDICTIONS),
-                "--questions",
-                str(DEFAULT_QUESTIONS),
-            ],
+            [sys.executable, str(SCORE_SCRIPT),
+             "--predictions", str(DEFAULT_PREDICTIONS),
+             "--questions",   str(DEFAULT_QUESTIONS)],
             check=False,
         )
+    else:
+        print("[index] Eval files not found – skipping score.py")
 
+    print("[index] Done ✓")
     return 0
 
 
