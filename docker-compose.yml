@@ -1,0 +1,52 @@
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  storage_data:
+    driver: local
+  hf_cache:
+    driver: local
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ~/.ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    restart: unless-stopped
+    networks:
+      - internal
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        TORCH_VARIANT: cpu
+    container_name: code-search
+    ports:
+      - "8501:8501"
+    volumes:
+      - storage_data:/storage
+      - hf_cache:/root/.cache/huggingface
+      - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - LLM_MODEL=mistral:7b
+      - USE_OLLAMA=true
+      - USE_RERANKER=false
+      - USE_GPU=false
+      - STORAGE_DIR=/storage
+      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - internal

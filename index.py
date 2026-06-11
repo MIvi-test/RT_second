@@ -6,11 +6,22 @@ import subprocess
 import sys
 import re
 import json
+import warnings
 from pathlib import Path
+
+# Suppress transformers warnings about deprecated __path__ access
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*__path__.*")
+
+# Suppress torch warnings
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
 import chromadb
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
+
+from settings import resolve_device
 
 # Indexes Python source files into ChromaDB (embeddings) and BM25 (keyword search).
 # Paths come from env vars so the same script works locally and in Docker.
@@ -20,22 +31,24 @@ from sentence_transformers import SentenceTransformer
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-_SOURCE_PATH = Path(os.environ.get("SOURCE_PATH", SCRIPT_DIR / "dataset_case3_v1.0_fix"))
+_SOURCE_PATH = Path(
+    os.environ.get("SOURCE_PATH", SCRIPT_DIR)
+)
 _STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
 
-REPO_ROOT = _SOURCE_PATH / "gymhero"  # actual code lives one level deeper
+REPO_ROOT = _SOURCE_PATH  # actual code lives one level deeper
 
 CHROMA_PATH = _STORAGE_DIR / "chroma_db"
-BM25_INDEX  = _STORAGE_DIR / "bm25_index.pkl"
-BM25_META   = _STORAGE_DIR / "bm25_meta.json"
+BM25_INDEX = _STORAGE_DIR / "bm25_index.pkl"
+BM25_META = _STORAGE_DIR / "bm25_meta.json"
 
 # Optional eval files – indexing succeeds even if these are absent
 DEFAULT_PREDICTIONS = _SOURCE_PATH / "results.json"
-DEFAULT_QUESTIONS   = _SOURCE_PATH / "eval_questions.json"
-SCORE_SCRIPT        = _SOURCE_PATH / "score.py"
+DEFAULT_QUESTIONS = _SOURCE_PATH / "eval_questions.json"
+SCORE_SCRIPT = _SOURCE_PATH / "score.py"
 
 COLLECTION_NAME = "code_chunks"
-MODEL_NAME      = "intfloat/multilingual-e5-large"
+MODEL_NAME = "intfloat/multilingual-e5-large"
 
 
 def get_node_source(lines: list[str], node: ast.AST) -> str:
@@ -45,8 +58,8 @@ def get_node_source(lines: list[str], node: ast.AST) -> str:
 
 def tokenize_code(text: str) -> list[str]:
     """Normalize and split code into BM25-friendly tokens."""
-    text = re.sub(r'([a-z])([A-Z])', r'\1 \2', text)   # split camelCase
-    text = re.sub(r'[^a-zA-Zа-яА-Я0-9]', ' ', text)   # drop punctuation
+    text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)  # split camelCase
+    text = re.sub(r"[^a-zA-Zа-яА-Я0-9]", " ", text)  # drop punctuation
     return text.lower().split()
 
 
@@ -55,57 +68,65 @@ def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
     rel_path = py_file.relative_to(repo_root).as_posix()
 
     try:
-        src  = py_file.read_text(encoding="utf-8", errors="replace")
+        src = py_file.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(src)
     except Exception:
         print(f"[WARN] Could not parse {py_file}")
         traceback.print_exc()
         return []
 
-    lines  = src.splitlines()
+    lines = src.splitlines()
     chunks = []
 
     for node in tree.body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             chunk_id = f"{rel_path}:{node.name}:{node.lineno}"
-            chunks.append({
-                "id": chunk_id,
-                "document": (
-                    f"File path: {rel_path}\n"
-                    f"Object type: {node.__class__.__name__}\n"
-                    f"Object name: {node.name}\n"
-                    f"Code:\n{get_node_source(lines, node)}"
-                ),
-                "metadata": {
-                    "file_path":  rel_path,
-                    "name":       node.name,
-                    "type":       "function",
-                    "start_line": node.lineno,
-                    "end_line":   getattr(node, "end_lineno", node.lineno),
-                },
-            })
+            chunks.append(
+                {
+                    "id": chunk_id,
+                    "document": (
+                        f"File path: {rel_path}\n"
+                        f"Object type: {node.__class__.__name__}\n"
+                        f"Object name: {node.name}\n"
+                        f"Code:\n{get_node_source(lines, node)}"
+                    ),
+                    "metadata": {
+                        "file_path": rel_path,
+                        "name": node.name,
+                        "type": "function",
+                        "start_line": node.lineno,
+                        "end_line": getattr(node, "end_lineno", node.lineno),
+                    },
+                }
+            )
 
         elif isinstance(node, ast.ClassDef):
             # Index methods individually – avoids duplicating the whole class body
             for sub_node in node.body:
                 if isinstance(sub_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    chunk_id = f"{rel_path}:{node.name}.{sub_node.name}:{sub_node.lineno}"
-                    chunks.append({
-                        "id": chunk_id,
-                        "document": (
-                            f"File path: {rel_path}\n"
-                            f"Object type: {sub_node.__class__.__name__}\n"
-                            f"Object name: {node.name}.{sub_node.name}\n"
-                            f"Code:\n{get_node_source(lines, sub_node)}"
-                        ),
-                        "metadata": {
-                            "file_path":  rel_path,
-                            "name":       f"{node.name}.{sub_node.name}",
-                            "type":       "method",
-                            "start_line": sub_node.lineno,
-                            "end_line":   getattr(sub_node, "end_lineno", sub_node.lineno),
-                        },
-                    })
+                    chunk_id = (
+                        f"{rel_path}:{node.name}.{sub_node.name}:{sub_node.lineno}"
+                    )
+                    chunks.append(
+                        {
+                            "id": chunk_id,
+                            "document": (
+                                f"File path: {rel_path}\n"
+                                f"Object type: {sub_node.__class__.__name__}\n"
+                                f"Object name: {node.name}.{sub_node.name}\n"
+                                f"Code:\n{get_node_source(lines, sub_node)}"
+                            ),
+                            "metadata": {
+                                "file_path": rel_path,
+                                "name": f"{node.name}.{sub_node.name}",
+                                "type": "method",
+                                "start_line": sub_node.lineno,
+                                "end_line": getattr(
+                                    sub_node, "end_lineno", sub_node.lineno
+                                ),
+                            },
+                        }
+                    )
 
     return chunks
 
@@ -122,7 +143,7 @@ def main() -> int:
     _STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- 1. Collect chunks from all Python files ---
-    py_files   = list(REPO_ROOT.rglob("*.py"))
+    py_files = list(REPO_ROOT.rglob("*.py"))
     all_chunks = []
     print(f"[index] Scanning {len(py_files)} files …")
 
@@ -135,7 +156,7 @@ def main() -> int:
 
     print(f"[index] {len(all_chunks)} chunks extracted")
 
-    ids       = [c["id"]       for c in all_chunks]
+    ids = [c["id"] for c in all_chunks]
     documents = [c["document"] for c in all_chunks]
     metadatas = [c["metadata"] for c in all_chunks]
 
@@ -157,9 +178,10 @@ def main() -> int:
         return 1
 
     # --- 3. Compute embeddings ---
-    print(f"[index] Loading {MODEL_NAME} …")
+    device = resolve_device()
+    print(f"[index] Loading {MODEL_NAME} on {device} …")
     try:
-        embed_model = SentenceTransformer(MODEL_NAME)
+        embed_model = SentenceTransformer(MODEL_NAME, device=device)
     except Exception:
         print(f"[ERROR] Could not load model '{MODEL_NAME}'")
         traceback.print_exc()
@@ -191,9 +213,9 @@ def main() -> int:
         collection = client.create_collection(
             name=COLLECTION_NAME,
             metadata={
-                "hnsw:space":           "cosine",
-                "hnsw:construction_ef": 200,   # higher = better recall, slower build
-                "hnsw:M":               32,
+                "hnsw:space": "cosine",
+                "hnsw:construction_ef": 200,  # higher = better recall, slower build
+                "hnsw:M": 32,
             },
         )
 
@@ -208,19 +230,30 @@ def main() -> int:
             )
             print(f"[index]   batch {i}–{end}")
 
-        print(f"[index] ChromaDB ready – {len(documents)} vectors in '{COLLECTION_NAME}'")
+        print(
+            f"[index] ChromaDB ready – {len(documents)} vectors in '{COLLECTION_NAME}'"
+        )
     except Exception:
         print("[ERROR] ChromaDB write failed")
         traceback.print_exc()
         return 1
 
     # --- 5. Run evaluation if eval files are present ---
-    if SCORE_SCRIPT.exists() and DEFAULT_PREDICTIONS.exists() and DEFAULT_QUESTIONS.exists():
+    if (
+        SCORE_SCRIPT.exists()
+        and DEFAULT_PREDICTIONS.exists()
+        and DEFAULT_QUESTIONS.exists()
+    ):
         print("\n[index] Running score.py …")
         subprocess.run(
-            [sys.executable, str(SCORE_SCRIPT),
-             "--predictions", str(DEFAULT_PREDICTIONS),
-             "--questions",   str(DEFAULT_QUESTIONS)],
+            [
+                sys.executable,
+                str(SCORE_SCRIPT),
+                "--predictions",
+                str(DEFAULT_PREDICTIONS),
+                "--questions",
+                str(DEFAULT_QUESTIONS),
+            ],
             check=False,
         )
     else:

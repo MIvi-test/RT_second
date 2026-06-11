@@ -1,15 +1,15 @@
 [project]
 name = "rt-second"
 version = "0.1.0"
-description = "Add your description here"
+description = "Code search app with optional GPU and reranker flags"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "chromadb>=1.5.9",
-    "ollama>=0.4.8",
     "pathlib>=1.0.1",
     "rank-bm25>=0.2.2",
-    "sentence-transformers>=5.5.1",
+    "sentence-transformers>=2.2.2",
     "streamlit>=1.45.0",
+    "ollama>=0.1.0",
     "torchvision>=0.27.0",
 ]
