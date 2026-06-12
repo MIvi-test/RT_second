@@ -13,6 +13,8 @@ services:
     build:
       args:
         TORCH_VARIANT: cuda
+    env_file:
+      - .env
     environment:
       - USE_GPU=true
     deploy:

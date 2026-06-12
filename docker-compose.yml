@@ -36,14 +36,11 @@ services:
       - storage_data:/storage
       - hf_cache:/root/.cache/huggingface
       - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
+    env_file:
+      - .env
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=mistral:7b
-      - USE_OLLAMA=true
-      - USE_RERANKER=false
-      - USE_GPU=false
-      - STORAGE_DIR=/storage
-      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
       - PYTHONUNBUFFERED=1
     depends_on:
       - ollama
