@@ -26,7 +26,7 @@ def _env_bool(name: str, default: bool) -> bool:
 # Edit these constants and then run `python export_settings_env.py` to generate
 # the .env file used by Docker Compose.
 DEFAULT_USE_RERANKER: bool = False
-DEFAULT_USE_GPU: bool = True
+DEFAULT_USE_GPU: bool = False
 DEFAULT_USE_OLLAMA: bool = True
 DEFAULT_USE_HF_CACHE: str = "/root/.cache/huggingface"
 DEFAULT_STORAGE_DIR: str = "/storage"

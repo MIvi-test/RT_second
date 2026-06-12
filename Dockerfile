@@ -29,15 +29,12 @@ COPY pyproject.toml ./
 # Установка зависимостей проекта через uv
 RUN uv pip install --system . --quiet
 
-COPY app.py llm.py search.py settings.py index.py query.py entrypoint.sh ./
+COPY src/ ./src/
+COPY entrypoint.sh ./
 
 RUN mkdir -p /storage && chmod +x entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1
-ENV USE_RERANKER=false
-ENV USE_GPU=true
-ENV USE_OLLAMA=true
-ENV STORAGE_DIR=/storage
 
 EXPOSE 8501
 ENTRYPOINT ["/bin/bash", "entrypoint.sh"]

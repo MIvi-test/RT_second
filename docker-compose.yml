@@ -42,6 +42,11 @@ services:
       - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=qwen3.5:9b
       - PYTHONUNBUFFERED=1
+      - USE_RERANKER=false
+      - USE_GPU=false
+      - USE_OLLAMA=true
+      - STORAGE_DIR=/storage
+      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/gymhero
     depends_on:
       - ollama
     restart: unless-stopped

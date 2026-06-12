@@ -10,19 +10,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
 CHROMA_PATH = STORAGE_DIR / "chroma_db"
 COLLECTION_NAME = "code_chunks"
-# DEFAULT_MODEL = "mistral:7b"
-DEFAULT_MODEL = "qwen3.5:9b"
-# DEFAULT_MODEL = "gemma2:9b"
-DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-USE_OLLAMA = os.environ.get("USE_OLLAMA", "true").lower() not in {
-    "0",
-    "false",
-    "no",
-    "off",
-}
-
-# Ensure ollama Python client picks up correct host
-os.environ.setdefault("OLLAMA_HOST", DEFAULT_OLLAMA_HOST)
+# Read model from environment (configured in Dockerfile via LLM_MODEL)
+DEFAULT_MODEL = os.environ.get("LLM_MODEL", "mistral:7b")
+USE_OLLAMA = os.environ.get("USE_OLLAMA", "true").lower() not in {"0", "false", "no", "off"}
 
 logger = logging.getLogger(__name__)
 

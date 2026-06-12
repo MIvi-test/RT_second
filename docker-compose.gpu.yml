@@ -17,6 +17,12 @@ services:
       - .env
     environment:
       - USE_GPU=true
+      - OLLAMA_HOST=http://ollama:11434
+      - LLM_MODEL=mistral:7b
+      - USE_RERANKER=false
+      - USE_OLLAMA=true
+      - STORAGE_DIR=/storage
+      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/gymhero
     deploy:
       resources:
         reservations:
