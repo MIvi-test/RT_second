@@ -1,5 +1,3 @@
-"""RAG-ответ через Ollama (mistral:7b) на основе найденных фрагментов кода."""
-
 from __future__ import annotations
 
 import logging
@@ -12,9 +10,16 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
 CHROMA_PATH = STORAGE_DIR / "chroma_db"
 COLLECTION_NAME = "code_chunks"
-DEFAULT_MODEL = "mistral:7b"
+# DEFAULT_MODEL = "mistral:7b"
+DEFAULT_MODEL = "qwen3.5:9b"
+# DEFAULT_MODEL = "gemma2:9b"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-USE_OLLAMA = os.environ.get("USE_OLLAMA", "true").lower() not in {"0", "false", "no", "off"}
+USE_OLLAMA = os.environ.get("USE_OLLAMA", "true").lower() not in {
+    "0",
+    "false",
+    "no",
+    "off",
+}
 
 # Ensure ollama Python client picks up correct host
 os.environ.setdefault("OLLAMA_HOST", DEFAULT_OLLAMA_HOST)
@@ -45,7 +50,9 @@ def check_ollama(model: str = DEFAULT_MODEL) -> tuple[bool, str | None]:
     try:
         response = ollama.list()
         names = [m.model for m in response.models]
-        if not any(n == model or n.startswith(f"{model}:") or model in n for n in names):
+        if not any(
+            n == model or n.startswith(f"{model}:") or model in n for n in names
+        ):
             return False, f"Модель {model} не найдена. Выполните: ollama pull {model}"
         return True, None
     except Exception:

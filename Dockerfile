@@ -35,7 +35,7 @@ RUN mkdir -p /storage && chmod +x entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1
 ENV USE_RERANKER=false
-ENV USE_GPU=false
+ENV USE_GPU=true
 ENV USE_OLLAMA=true
 ENV STORAGE_DIR=/storage
 

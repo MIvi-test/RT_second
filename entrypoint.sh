@@ -2,7 +2,7 @@
 set -e
 
 OLLAMA_HOST="${OLLAMA_HOST:-http://ollama:11434}"
-MODEL="${LLM_MODEL:-mistral:7b}"
+MODEL="${LLM_MODEL:-qwen3.5:9b}"
 STORAGE_DIR="${STORAGE_DIR:-/storage}"
 SOURCE_PATH="${SOURCE_PATH:-/app/dataset_case3_v1.0_fix/gymhero}"
 
