@@ -8,28 +8,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# cpu  — ~250 MB torch wheel (default, smaller image)
-# cuda — GPU torch; requires nvidia-container-toolkit at runtime
-RUN pip install --upgrade pip --quiet && \
-    if [ "$TORCH_VARIANT" = "cuda" ]; then \
-        pip install --no-cache-dir \
+# Устанавливаем uv
+RUN pip install --upgrade pip uv --quiet
+
+# Отключаем кэш uv
+ENV UV_NO_CACHE=1
+
+# Установка torch через uv с флагом --system
+RUN if [ "$TORCH_VARIANT" = "cuda" ]; then \
+        uv pip install --system \
             --index-url https://download.pytorch.org/whl/cu124 \
             torch==2.5.1 --quiet; \
     else \
-        pip install --no-cache-dir \
+        uv pip install --system \
             --index-url https://download.pytorch.org/whl/cpu \
             torch==2.5.1 --quiet; \
     fi
 
 COPY pyproject.toml ./
-RUN pip install --no-cache-dir . --quiet
+# Установка зависимостей проекта через uv
+RUN uv pip install --system . --quiet
 
 COPY app.py llm.py search.py settings.py index.py query.py entrypoint.sh ./
 
 RUN mkdir -p /storage && chmod +x entrypoint.sh
 
 ENV PYTHONUNBUFFERED=1
-ENV USE_RERANKER=true
+ENV USE_RERANKER=false
 ENV USE_GPU=false
 ENV USE_OLLAMA=true
 ENV STORAGE_DIR=/storage

@@ -21,12 +21,13 @@ def _env_bool(name: str, default: bool) -> bool:
         return False
     return default
 
+
 # -- Editable defaults (change these values as your single source of truth) --
 # Edit these constants and then run `python export_settings_env.py` to generate
 # the .env file used by Docker Compose.
-DEFAULT_USE_RERANKER: bool = True
+DEFAULT_USE_RERANKER: bool = False
 DEFAULT_USE_GPU: bool = True
-DEFAULT_USE_OLLAMA: bool = False
+DEFAULT_USE_OLLAMA: bool = True
 DEFAULT_USE_HF_CACHE: str = "/root/.cache/huggingface"
 DEFAULT_STORAGE_DIR: str = "/storage"
 DEFAULT_SOURCE_PATH: str = "/app/dataset_case3_v1.0_fix/"
@@ -44,9 +45,9 @@ def get_runtime_env() -> dict:
     env file that Docker Compose can consume.
     """
     return {
-        "USE_RERANKER": str(int(DEFAULT_USE_RERANKER)),
-        "USE_GPU": str(int(DEFAULT_USE_GPU)),
-        "USE_OLLAMA": str(int(DEFAULT_USE_OLLAMA)),
+        "USE_RERANKER": str(DEFAULT_USE_RERANKER),
+        "USE_GPU": str(DEFAULT_USE_GPU),
+        "USE_OLLAMA": str(DEFAULT_USE_OLLAMA),
         "HF_CACHE": DEFAULT_USE_HF_CACHE,
         "STORAGE_DIR": DEFAULT_STORAGE_DIR,
         "SOURCE_PATH": DEFAULT_SOURCE_PATH,
