@@ -46,13 +46,13 @@ else
     mkdir -p "${STORAGE_DIR}"
     export SOURCE_PATH="${SOURCE_PATH}"
     export STORAGE_DIR="${STORAGE_DIR}"
-    python index.py
+    python src/index.py
     echo "[3] Indexing complete."
 fi
 
 # 4. Start Streamlit UI
 echo "[4] Starting Streamlit UI on port 8501..."
-exec streamlit run app.py \
+exec streamlit run src/app.py \
     --server.port=8501 \
     --server.address=0.0.0.0 \
     --server.headless=true \

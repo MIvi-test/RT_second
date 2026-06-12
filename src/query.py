@@ -7,7 +7,7 @@ QUESTIONS_PATH = SCRIPT_DIR / "dataset_case3_v1.0_fix" / "eval_questions.json"
 RESULTS_PATH = SCRIPT_DIR / "results.json"
 
 # Choose search method for final results: 'semantic' or 'hybrid'
-SEARCH_METHOD = "hybrid"
+SEARCH_METHOD = "semantic"
 
 questions = json.loads(QUESTIONS_PATH.read_text(encoding="utf-8"))
 print(f"Method: {SEARCH_METHOD} | Questions: {len(questions)}\n")
