@@ -13,12 +13,11 @@ services:
     build:
       args:
         TORCH_VARIANT: cuda
-    env_file:
-      - .env
     environment:
       - USE_GPU=true
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=mistral:7b
+      - LLM_MODEL=gemma2:9b
+      - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
       - USE_OLLAMA=true
       - STORAGE_DIR=/storage

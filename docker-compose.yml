@@ -11,7 +11,7 @@ volumes:
 services:
   ollama:
     image: ollama/ollama:latest
-    container_name: ollama
+    container_name: ollama                                
     ports:
       - "11434:11434"
     volumes:
@@ -19,7 +19,6 @@ services:
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_ORIGINS=*
-    restart: unless-stopped
     networks:
       - internal
 
@@ -36,11 +35,9 @@ services:
       - storage_data:/storage
       - hf_cache:/root/.cache/huggingface
       - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
-    env_file:
-      - .env
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=qwen3.5:9b
+      - LLM_MODEL=gemma2:9b
       - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
       - USE_GPU=false
@@ -49,6 +46,5 @@ services:
       - SOURCE_PATH=/app/dataset_case3_v1.0_fix/gymhero
     depends_on:
       - ollama
-    restart: unless-stopped
     networks:
       - internal

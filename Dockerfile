@@ -1,40 +1,43 @@
-# syntax=docker/dockerfile:1
-FROM python:3.12-slim
+ARG BASE_IMAGE=python:3.12-slim
+FROM ${BASE_IMAGE}
 
-ARG TORCH_VARIANT=cpu
-
+# Установка системных зависимостей
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# Настройки окружения uv
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# Устанавливаем uv
-RUN pip install --upgrade pip uv --quiet
+# Копируем конфигурацию проекта. 
+# Запись uv.lock* (со звездочкой) означает: "скопируй, если он есть, но не падай, если его нет"
+COPY pyproject.toml uv.lock* /app/
 
-# Отключаем кэш uv
-ENV UV_NO_CACHE=1
+# Принимаем аргумент сборки (cpu или cuda)
+ARG TORCH_VARIANT=cpu
+ENV TORCH_VARIANT=${TORCH_VARIANT}
 
-# Установка torch через uv с флагом --system
-RUN if [ "$TORCH_VARIANT" = "cuda" ]; then \
-        uv pip install --system \
-            --index-url https://download.pytorch.org/whl/cu124 \
-            torch==2.5.1 --quiet; \
-    else \
-        uv pip install --system \
-            --index-url https://download.pytorch.org/whl/cpu \
-            torch==2.5.1 --quiet; \
-    fi
+# Заменяем shell-скрипт на встроенную фичу uv. 
+# Мы передаем индекс PyTorch напрямую через переменную окружения uv, если выбрана cuda
+RUN if [ "${TORCH_VARIANT}" = "cuda" ]; then \
+        export UV_EXTRA_INDEX_URL="https://download.pytorch.org/whl/cu121"; \
+    fi && \
+    uv sync --no-install-project --no-dev
 
-COPY pyproject.toml ./
-# Установка зависимостей проекта через uv
-RUN uv pip install --system . --quiet
+# Прописываем путь к виртуальному окружению в PATH
+ENV PATH="/app/.venv/bin:$PATH"
 
-COPY src/ ./src/
-COPY entrypoint.sh ./
+# Копируем исходный код и entrypoint
+COPY src/ /app/src/
+COPY entrypoint.sh /app/entrypoint.sh
 
-RUN mkdir -p /storage && chmod +x entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
 
-ENV PYTHONUNBUFFERED=1
-
-EXPOSE 8501
-ENTRYPOINT ["/bin/bash", "entrypoint.sh"]
+ENTRYPOINT ["/app/entrypoint.sh"]
