@@ -5,6 +5,7 @@ import re
 import numpy as np
 from pathlib import Path
 import chromadb
+from deep_translator import GoogleTranslator
 from sentence_transformers import SentenceTransformer
 from sentence_transformers import CrossEncoder
 
@@ -24,38 +25,14 @@ _bm25_meta = None
 _reranker = None
 _device: str | None = None
 
-
-def _calibrate_score(raw: float, method: str) -> dict:
-    """Convert raw model score to user-friendly relevance percent + label.
-
-    intfloat/multilingual-e5-large cosine similarity realistically sits in
-    ~0.20–0.62 for code search, so we stretch that band to 0–100 %.
-    CrossEncoder (bge-reranker-v2-m3) outputs logits in roughly -6 … +6;
-    we map those through a sigmoid.
-    """
-    import math
-
-    if "reranker" in method:
-        # raw is already score*100 at the call site, undo that first
-        logit = raw / 100.0
-        pct = round(100.0 / (1.0 + math.exp(-logit * 1.5)), 1)
-    else:
-        # e5 cosine: values below LOW are noise, above HIGH are excellent
-        LOW, HIGH = 0.3, 0.6
-        clamped = max(LOW, min(HIGH, raw))
-        pct = round((clamped - LOW) / (HIGH - LOW) * 100.0, 1)
-
-    if pct >= 78:
-        label = "Отличное совпадение"
-    elif pct >= 52:
-        label = "Хорошее совпадение"
-    elif pct >= 28:
-        label = "Частичное совпадение"
-    else:
-        label = "Слабое совпадение"
-
-    return {"relevance_pct": pct, "relevance_label": label}
-
+def _translate_to_english(text: str) -> str:
+    """Translate query to English if it contains Cyrillic characters."""
+    if re.search(r'[а-яА-ЯёЁ]', text):
+        try:
+            return GoogleTranslator(source='auto', target='en').translate(text)
+        except Exception:
+            return text  # если перевод упал — используем оригинал
+    return text
 
 def tokenize_code(text: str) -> list[str]:
     # split CamelCase and non-alphanumeric chars, return lowercase tokens
@@ -124,25 +101,20 @@ def _apply_reranker(
             idx = 0
             for c in candidates:
                 if c.get("document"):
-                    raw_reranker = float(rerank_scores[idx])
-                    c["score"] = round(raw_reranker * 100, 2)
+                    c["score"] = round(float(rerank_scores[idx]) * 100, 2)
                     c["method"] = method_with
-                    c.update(_calibrate_score(c["score"], method_with))
                     idx += 1
                 else:
                     c["score"] = round(c[score_key] * 100, 2)
                     c["method"] = method_without
-                    c.update(_calibrate_score(c[score_key], method_without))
         else:
             for c in candidates:
                 c["score"] = round(c[score_key] * 100, 2)
                 c["method"] = method_without
-                c.update(_calibrate_score(c[score_key], method_without))
     else:
         for c in candidates:
             c["score"] = round(c[score_key] * 100, 2)
             c["method"] = method_without
-            c.update(_calibrate_score(c[score_key], method_without))
 
     for c in candidates:
         c.pop("document", None)
@@ -154,6 +126,7 @@ def _apply_reranker(
 def semantic_search(query: str, top_k: int = 5) -> list[dict]:
     """Semantic search with optional CrossEncoder reranking."""
     _load()
+    query = _translate_to_english(query)
 
     fetch_k = 75 if USE_RERANKER else top_k
     include_docs = USE_RERANKER
@@ -195,11 +168,12 @@ def semantic_search(query: str, top_k: int = 5) -> list[dict]:
 def hybrid_search(
     query: str,
     top_k: int = 5,
-    semantic_weight: float = 0.6,
-    bm25_weight: float = 0.4,
+    semantic_weight: float = 0.5,
+    bm25_weight: float = 0.5,
 ) -> list[dict]:
     """Combine semantic and BM25 scores, optionally rerank with CrossEncoder."""
     _load()
+    query = _translate_to_english(query)
 
     fetch_k = top_k * 3
     include_docs = USE_RERANKER
@@ -260,7 +234,6 @@ def hybrid_search(
             "type": meta.get("type", "?"),
             "name": meta.get("name", "?"),
             "hybrid_score": final,
-            "semantic_score": sem,
         }
         if include_docs:
             item["document"] = doc_by_id.get(cid, "")
