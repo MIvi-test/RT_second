@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from pathlib import Path
 
 import chromadb
@@ -61,25 +62,57 @@ def fetch_documents_for_chunks(chunk_ids: list[str]) -> dict[str, str]:
     data = _get_collection().get(ids=chunk_ids, include=["documents"])
     return {cid: doc for cid, doc in zip(data["ids"], data["documents"])}
 
+def _detect_lang(text: str) -> str:
+    """Return 'ru' if text contains Cyrillic characters, else 'en'."""
+    return "ru" if re.search(r'[а-яА-ЯёЁ]', text) else "en"
+
 
 def _build_prompt(question: str, results: list[dict], documents: dict[str, str]) -> str:
+    lang = _detect_lang(question)
+
+    if lang == "ru":
+        system = (
+            "Ты — ассистент по анализу кодовой базы. "
+            "На основе найденных фрагментов кода ответь на вопрос пользователя.\n\n"
+            "Структура ответа:\n"
+            "1. КРАТКОЕ РЕЗЮМЕ (1-3 предложения): самая суть ответа.\n"
+            "2. ПОДРОБНЕЕ (если нужно): детальное объяснение логики, параметров, возвращаемых значений.\n"
+            "3. ПРИМЕР ИСПОЛЬЗОВАНИЯ (если применимо): покажи как вызывается функция/класс на основе кода из фрагментов.\n\n"
+            "Если в фрагментах нет достаточной информации — скажи об этом честно."
+        )
+        question_label = "Вопрос"
+        fragments_label = "Найденные фрагменты"
+        fragment_label = "Фрагмент"
+        answer_label = "Ответ"
+    else:
+        system = (
+            "You are a codebase analysis assistant. "
+            "Answer the user's question based on the provided code fragments.\n\n"
+            "Response structure:\n"
+            "1. SUMMARY (1-3 sentences): the core answer, straight to the point.\n"
+            "2. DETAILS (if needed): explain the logic, parameters, return values in depth.\n"
+            "3. USAGE EXAMPLE (if applicable): show how the function/class is called, based on the code fragments.\n\n"
+            "If the fragments don't contain enough information — say so honestly."
+        )
+        question_label = "Question"
+        fragments_label = "Found fragments"
+        fragment_label = "Fragment"
+        answer_label = "Answer"
+
     parts = [
-        "Ты — ассистент по анализу кодовой базы. "
-        "На основе найденных фрагментов кода дай связный человекочитаемый ответ на вопрос пользователя. "
-        "Отвечай на том же языке, что и вопрос. "
-        "Если в фрагментах нет достаточной информации — скажи об этом честно.",
-        f"\nВопрос: {question}\n",
-        "Найденные фрагменты:",
+        system,
+        f"\n{question_label}: {question}\n",
+        f"{fragments_label}:",
     ]
 
     for i, hit in enumerate(results, start=1):
         code = documents.get(hit["chunk_id"], "")
         parts.append(
-            f"\n--- Фрагмент {i}: {hit['file_path']} :: {hit['name']} "
-            f"(релевантность {hit.get('score', 0)}%) ---\n{code}"
+            f"\n--- {fragment_label} {i}: {hit['file_path']} :: {hit['name']} "
+            f"(relevance {hit.get('score', 0)}%) ---\n{code}"
         )
 
-    parts.append("\nСвязный ответ:")
+    parts.append(f"\n{answer_label}:")
     return "\n".join(parts)
 
 
