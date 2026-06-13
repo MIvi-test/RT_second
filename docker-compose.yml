@@ -39,7 +39,7 @@ services:
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=mistral:7b
-      - USE_OLLAMA=true
+      - USE_OLLAMA=false
       - USE_RERANKER=false
       - USE_GPU=false
       - STORAGE_DIR=/storage

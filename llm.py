@@ -14,7 +14,7 @@ CHROMA_PATH = STORAGE_DIR / "chroma_db"
 COLLECTION_NAME = "code_chunks"
 DEFAULT_MODEL = "mistral:7b"
 DEFAULT_OLLAMA_HOST = "http://localhost:11434"
-USE_OLLAMA = os.environ.get("USE_OLLAMA", "true").lower() not in {"0", "false", "no", "off"}
+USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() not in {"0", "false", "no", "off"}
 
 # Ensure ollama Python client picks up correct host
 os.environ.setdefault("OLLAMA_HOST", DEFAULT_OLLAMA_HOST)

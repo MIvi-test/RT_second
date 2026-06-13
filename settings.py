@@ -23,7 +23,7 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 USE_RERANKER: bool = _env_bool("USE_RERANKER", False)
-USE_GPU: bool = _env_bool("USE_GPU", True)
+USE_GPU: bool = _env_bool("USE_GPU", False)
 
 
 def resolve_device() -> str:

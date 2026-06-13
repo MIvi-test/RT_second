@@ -52,6 +52,8 @@ if "search_history" not in st.session_state:
     st.session_state.search_history = []
 if "trigger_search" not in st.session_state:
     st.session_state.trigger_search = False
+if "enter_pressed" not in st.session_state:
+    st.session_state.enter_pressed = False
 
 if PSUTIL_AVAILABLE:
     mem = psutil.virtual_memory()
@@ -115,46 +117,59 @@ with st.sidebar:
             st.rerun()
 
 # 4. ОСНОВНАЯ ЗОНА ИНТЕРФЕЙСА
+def _on_query_submit():
+    st.session_state.enter_pressed = True
+
+
 query = st.text_input(
     "Введите поисковый запрос:",
     value=st.session_state.last_query,
     placeholder="Например: как устроена авторизация пользователя?",
+    on_change=_on_query_submit,
 )
 
-tab_results, tab_llm = st.tabs(["Найденные фрагменты кода", "Пояснение от ИИ"])
+search_clicked = st.button("Поиск", type="primary", use_container_width=True)
 
-search_clicked = st.button("Запустить поиск", type="primary", use_container_width=True)
+def _run_search(search_query: str):
+    raw_results = hybrid_search(search_query)
 
-search_triggered = search_clicked or st.session_state.get("trigger_search", False)
+    st.session_state.search_results = raw_results
+    st.session_state.last_query = search_query
+    st.session_state.llm_answer = None
 
-if (search_triggered or (query.strip() and query.strip() != st.session_state.last_query)) and query.strip():
-    if st.session_state.get("trigger_search"):
-        st.session_state.trigger_search = False
+    if HISTORY_ENABLED and raw_results:
+        if search_query in st.session_state.search_history:
+            st.session_state.search_history.remove(search_query)
+        st.session_state.search_history.append(search_query)
+        if len(st.session_state.search_history) > 5:
+            st.session_state.search_history = st.session_state.search_history[-5:]
 
+    if raw_results:
+        chunk_ids = [r["chunk_id"] for r in raw_results]
+        st.session_state.search_documents = fetch_documents_for_chunks(chunk_ids)
+    else:
+        st.session_state.search_documents = None
+
+
+if st.session_state.get("trigger_search"):
+    st.session_state.trigger_search = False
+    with st.spinner("Ищем совпадения в репозитории..."):
+        _run_search(st.session_state.last_query)
+
+elif st.session_state.get("enter_pressed") and query.strip():
+    st.session_state.enter_pressed = False
+    with st.spinner("Ищем совпадения в репозитории..."):
+        _run_search(query.strip())
+
+elif search_clicked and query.strip():
     if query.strip() == st.session_state.last_query and st.session_state.search_results is not None:
         with st.spinner("Повторный поиск (загрузка из кэша)..."):
             time.sleep(0.4)
     else:
         with st.spinner("Ищем совпадения в репозитории..."):
-            raw_results = hybrid_search(query.strip())
+            _run_search(query.strip())
 
-            st.session_state.search_results = raw_results
-            st.session_state.last_query = query.strip()
-            st.session_state.llm_answer = None
-
-            if HISTORY_ENABLED and raw_results:
-                q = query.strip()
-                if q in st.session_state.search_history:
-                    st.session_state.search_history.remove(q)
-                st.session_state.search_history.append(q)
-                if len(st.session_state.search_history) > 5:
-                    st.session_state.search_history = st.session_state.search_history[-5:]
-
-            if raw_results:
-                chunk_ids = [r["chunk_id"] for r in raw_results]
-                st.session_state.search_documents = fetch_documents_for_chunks(chunk_ids)
-            else:
-                st.session_state.search_documents = None
+tab_results, tab_llm = st.tabs(["Найденные фрагменты кода", "Пояснение от ИИ"])
 
 if st.session_state.search_results:
     results = [r for r in st.session_state.search_results if r["type"] in filter_type]
@@ -164,6 +179,10 @@ if st.session_state.search_results:
             st.warning("В текущем ТОП-5 нет объектов выбранного типа. Измените фильтр в боковой панели.")
         else:
             st.subheader(f"Отображено фрагментов: {len(results)} из 5")
+
+            # Используем уже откалиброванные проценты из `search.py` (поле `score`)
+            # и отображаем качественную метку `relevance_label`, если есть.
+            # Поле `score` ожидается в диапазоне 0..100.
 
             for idx, hit in enumerate(results, 1):
                 with st.container(border=True):
@@ -176,7 +195,17 @@ if st.session_state.search_results:
                         )
 
                     with col_metric:
-                        st.metric(label="Релевантность", value=f"{hit['score']}%")
+                        rel_pct = hit.get("relevance_pct")
+                        if rel_pct is None:
+                            # fallback: если поле отсутствует, нормализуем score
+                            raw = hit.get("score", 0)
+                            try:
+                                rel_pct = max(0.0, min(100.0, float(raw)))
+                            except Exception:
+                                rel_pct = 0.0
+                        st.metric(label="Релевантность", value=f"{rel_pct:.0f}%")
+                        if hit.get("relevance_label"):
+                            st.caption(hit["relevance_label"])
 
                     with st.expander("Посмотреть исходный код фрагмента", expanded=(idx == 1)):
                         code_content = st.session_state.search_documents.get(
