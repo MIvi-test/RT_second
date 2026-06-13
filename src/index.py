@@ -8,47 +8,24 @@ import re
 import json
 import warnings
 from pathlib import Path
-
-# Suppress transformers warnings about deprecated __path__ access
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-warnings.filterwarnings("ignore", message=".*__path__.*")
-
-# Suppress torch warnings
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
-
+from config import *
 import chromadb
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
-
 from settings import resolve_device
+
+
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", message=".*__path__.*")
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
 # Indexes Python source files into ChromaDB (embeddings) and BM25 (keyword search).
 # Paths come from env vars so the same script works locally and in Docker.
 #
 #   SOURCE_PATH  – dataset root  (default: ./dataset_case3_v1.0_fix)
 #   STORAGE_DIR  – index output  (default: ./storage)
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-
-_SOURCE_PATH = Path(
-    os.environ.get("SOURCE_PATH", SCRIPT_DIR)
-)
-_STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
-
-REPO_ROOT = _SOURCE_PATH  # actual code lives one level deeper
-
-CHROMA_PATH = _STORAGE_DIR / "chroma_db"
-BM25_INDEX = _STORAGE_DIR / "bm25_index.pkl"
-BM25_META = _STORAGE_DIR / "bm25_meta.json"
-
-# Optional eval files – indexing succeeds even if these are absent
-DEFAULT_PREDICTIONS = _SOURCE_PATH / "results.json"
-DEFAULT_QUESTIONS = _SOURCE_PATH / "eval_questions.json"
-SCORE_SCRIPT = _SOURCE_PATH / "score.py"
-
-COLLECTION_NAME = "code_chunks"
-MODEL_NAME = "intfloat/multilingual-e5-large"
 
 
 def get_node_source(lines: list[str], node: ast.AST) -> str:
@@ -132,15 +109,15 @@ def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
 
 
 def main() -> int:
-    print(f"[index] SOURCE_PATH : {_SOURCE_PATH}")
+    print(f"[index] SOURCE_PATH : {SOURCE_PATH}")
     print(f"[index] REPO_ROOT   : {REPO_ROOT}")
-    print(f"[index] STORAGE_DIR : {_STORAGE_DIR}")
+    print(f"[index] STORAGE_DIR : {STORAGE_DIR}")
 
     if not REPO_ROOT.exists():
         print(f"[ERROR] Repo root not found: {REPO_ROOT}")
         return 1
 
-    _STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- 1. Collect chunks from all Python files ---
     py_files = list(REPO_ROOT.rglob("*.py"))

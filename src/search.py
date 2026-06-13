@@ -5,16 +5,13 @@ import re
 import numpy as np
 from pathlib import Path
 import chromadb
+from deep_translator import GoogleTranslator
 from sentence_transformers import SentenceTransformer
 from sentence_transformers import CrossEncoder
-
+from config import *
 from settings import USE_RERANKER, resolve_device
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
-CHROMA_PATH = STORAGE_DIR / "chroma_db"
-COLLECTION_NAME = "code_chunks"
-MODEL_NAME = "intfloat/multilingual-e5-large"
+
 
 # Module-level singletons: resources are loaded lazily on first search call
 _model = None
@@ -23,6 +20,16 @@ _bm25 = None
 _bm25_meta = None
 _reranker = None
 _device: str | None = None
+
+
+def _translate_to_english(text: str) -> str:
+    """Translate query to English if it contains Cyrillic characters."""
+    if re.search(r"[а-яА-ЯёЁ]", text):
+        try:
+            return GoogleTranslator(source="auto", target="en").translate(text)
+        except Exception:
+            return text  # если перевод упал — используем оригинал
+    return text
 
 
 def tokenize_code(text: str) -> list[str]:
@@ -117,6 +124,7 @@ def _apply_reranker(
 def semantic_search(query: str, top_k: int = 5) -> list[dict]:
     """Semantic search with optional CrossEncoder reranking."""
     _load()
+    query = _translate_to_english(query)
 
     fetch_k = 75 if USE_RERANKER else top_k
     include_docs = USE_RERANKER
@@ -158,11 +166,12 @@ def semantic_search(query: str, top_k: int = 5) -> list[dict]:
 def hybrid_search(
     query: str,
     top_k: int = 5,
-    semantic_weight: float = 0.6,
-    bm25_weight: float = 0.4,
+    semantic_weight: float = 0.5,
+    bm25_weight: float = 0.5,
 ) -> list[dict]:
     """Combine semantic and BM25 scores, optionally rerank with CrossEncoder."""
     _load()
+    query = _translate_to_english(query)
 
     fetch_k = top_k * 3
     include_docs = USE_RERANKER

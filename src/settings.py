@@ -29,8 +29,8 @@ DEFAULT_USE_RERANKER: bool = False
 DEFAULT_USE_GPU: bool = False
 DEFAULT_USE_OLLAMA: bool = True
 DEFAULT_USE_HF_CACHE: str = "/root/.cache/huggingface"
-DEFAULT_STORAGE_DIR: str = "/storage"
-DEFAULT_SOURCE_PATH: str = "/app/dataset_case3_v1.0_fix/"
+DEFAULTSTORAGE_DIR: str = "/storage"
+DEFAULTSOURCE_PATH: str = "/app/dataset_case3_v1.0_fix/"
 
 
 USE_RERANKER: bool = _env_bool("USE_RERANKER", DEFAULT_USE_RERANKER)
@@ -49,8 +49,8 @@ def get_runtime_env() -> dict:
         "USE_GPU": str(DEFAULT_USE_GPU),
         "USE_OLLAMA": str(DEFAULT_USE_OLLAMA),
         "HF_CACHE": DEFAULT_USE_HF_CACHE,
-        "STORAGE_DIR": DEFAULT_STORAGE_DIR,
-        "SOURCE_PATH": DEFAULT_SOURCE_PATH,
+        "STORAGE_DIR": DEFAULTSTORAGE_DIR,
+        "SOURCE_PATH": DEFAULTSOURCE_PATH,
     }
 
 

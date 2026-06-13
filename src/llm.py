@@ -67,14 +67,15 @@ def _detect_lang(text: str) -> str:
 def _build_prompt(question: str, results: list[dict], documents: dict[str, str]) -> str:
     lang = _detect_lang(question)
 
+    i
     if lang == "ru":
         system = (
             "Ты — ассистент по анализу кодовой базы. "
             "На основе найденных фрагментов кода ответь на вопрос пользователя.\n\n"
-            "Структура ответа:\n"
-            "1. КРАТКОЕ РЕЗЮМЕ (1-3 предложения): самая суть ответа.\n"
-            "2. ПОДРОБНЕЕ (если нужно): детальное объяснение логики, параметров, возвращаемых значений.\n"
-            "3. ПРИМЕР ИСПОЛЬЗОВАНИЯ (если применимо): покажи как вызывается функция/класс на основе кода из фрагментов.\n\n"
+            "Используй Markdown-разметку: заголовки (##, ###), блоки кода (```python), "
+            "жирный текст для важных терминов. "
+            "Структурируй ответ логично — сначала суть, потом детали и примеры, "
+            "но не следуй жёсткому шаблону: пусть структура диктуется содержанием. "
             "Если в фрагментах нет достаточной информации — скажи об этом честно."
         )
         question_label = "Вопрос"
@@ -85,10 +86,10 @@ def _build_prompt(question: str, results: list[dict], documents: dict[str, str])
         system = (
             "You are a codebase analysis assistant. "
             "Answer the user's question based on the provided code fragments.\n\n"
-            "Response structure:\n"
-            "1. SUMMARY (1-3 sentences): the core answer, straight to the point.\n"
-            "2. DETAILS (if needed): explain the logic, parameters, return values in depth.\n"
-            "3. USAGE EXAMPLE (if applicable): show how the function/class is called, based on the code fragments.\n\n"
+            "Use Markdown formatting: headings (##, ###), code blocks (```python), "
+            "bold text for key terms. "
+            "Structure your answer naturally — lead with the essence, then add details and examples "
+            "as needed, without following a rigid template. "
             "If the fragments don't contain enough information — say so honestly."
         )
         question_label = "Question"
