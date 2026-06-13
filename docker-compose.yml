@@ -42,9 +42,10 @@ services:
       - USE_RERANKER=false
       - USE_GPU=false
       - USE_OLLAMA=false
-      - STORAGE_DIR=/storage
-      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/gymhero
+      - STORAGE_DIR=storage_data
+      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
     depends_on:
       - ollama
     networks:
       - internal
+    

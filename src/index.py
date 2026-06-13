@@ -14,7 +14,6 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 from settings import resolve_device
 
-
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*__path__.*")
 
@@ -43,7 +42,7 @@ def tokenize_code(text: str) -> list[str]:
 def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
     """Parse one file and return a chunk per top-level function / class method."""
     rel_path = py_file.relative_to(repo_root).as_posix()
-
+    print(rel_path)
     try:
         src = py_file.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(src)
@@ -156,11 +155,11 @@ def main() -> int:
 
     # --- 3. Compute embeddings ---
     device = resolve_device()
-    print(f"[index] Loading {MODEL_NAME} on {device} …")
+    print(f"[index] Loading {EMDENDING_MODEL_NAME} on {device} …")
     try:
-        embed_model = SentenceTransformer(MODEL_NAME, device=device)
+        embed_model = SentenceTransformer(EMDENDING_MODEL_NAME, device=device)
     except Exception:
-        print(f"[ERROR] Could not load model '{MODEL_NAME}'")
+        print(f"[ERROR] Could not load model '{EMDENDING_MODEL_NAME}'")
         traceback.print_exc()
         return 1
 

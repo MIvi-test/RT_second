@@ -11,8 +11,6 @@ from sentence_transformers import CrossEncoder
 from config import *
 from settings import USE_RERANKER, resolve_device
 
-
-
 # Module-level singletons: resources are loaded lazily on first search call
 _model = None
 _collection = None
@@ -49,7 +47,7 @@ def _load():
 
     if _model is None:
         print(f"Loading SentenceTransformer model on {_device}...")
-        _model = SentenceTransformer(MODEL_NAME, device=_device)
+        _model = SentenceTransformer(EMDENDING_MODEL_NAME, device=_device)
 
     if USE_RERANKER and _reranker is None:
         print(f"Loading CrossEncoder reranker on {_device}...")
@@ -78,7 +76,7 @@ def initialize_search() -> dict:
     return {
         "device": _device or "cpu",
         "use_reranker": USE_RERANKER,
-        "embedding_model": MODEL_NAME,
+        "embedding_model": EMDENDING_MODEL_NAME,
         "reranker_model": "BAAI/bge-reranker-v2-m3" if USE_RERANKER else None,
     }
 

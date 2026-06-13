@@ -67,7 +67,6 @@ def _detect_lang(text: str) -> str:
 def _build_prompt(question: str, results: list[dict], documents: dict[str, str]) -> str:
     lang = _detect_lang(question)
 
-    i
     if lang == "ru":
         system = (
             "Ты — ассистент по анализу кодовой базы. "

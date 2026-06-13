@@ -1,6 +1,27 @@
 # GPU override: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up --build
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  storage_data:
+    driver: local
+  hf_cache:
+    driver: local
+
 services:
   ollama:
+    image: ollama/ollama:latest
+    container_name: ollama                                
+    ports:
+      - "11434:11434"
+    volumes:
+      - ~/.ollama:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*
+    networks:
+      - internal
     deploy:
       resources:
         reservations:
@@ -11,17 +32,30 @@ services:
 
   app:
     build:
+      context: .
+      dockerfile: Dockerfile
       args:
         TORCH_VARIANT: cuda
+    container_name: code-search
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./storage:/storage
+      - hf_cache:/root/.cache/huggingface
+      - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
     environment:
-      - USE_GPU=true
       - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=llama3.2:3b
       - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
+      - USE_GPU=true
       - USE_OLLAMA=true
       - STORAGE_DIR=/storage
-      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/gymhero
+      - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
+    depends_on:
+      - ollama
+    networks:
+      - internal
     deploy:
       resources:
         reservations:
@@ -29,3 +63,4 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    

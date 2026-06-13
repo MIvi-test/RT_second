@@ -2,6 +2,12 @@
 import sys
 import streamlit as st
 import json
+# Пытаемся импортировать psutil для проверки памяти
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
 from pathlib import Path
 
 # ------------------- Функция поиска файла -------------------
@@ -140,7 +146,9 @@ if submitted and query.strip():
         raw_results = hybrid_search(q_cleaned)
 
         LOW_THRESHOLD = 30.0
-        filtered_results = [r for r in raw_results if r.get("score", 0) >= LOW_THRESHOLD]
+        filtered_results = [
+            r for r in raw_results if r.get("score", 0) >= LOW_THRESHOLD
+        ]
 
         st.session_state.search_results = filtered_results
         st.session_state.last_query = q_cleaned
