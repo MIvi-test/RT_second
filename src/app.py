@@ -2,7 +2,8 @@
 import sys
 import streamlit as st
 import json
-# Пытаемся импортировать psutil для проверки памяти
+from config import *  
+
 try:
     import psutil
     PSUTIL_AVAILABLE = True
@@ -10,10 +11,10 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 from pathlib import Path
 
-# ------------------- Функция поиска файла -------------------
+# Функция поиска файла
 def find_file(filename: str) -> Path | None:
-    """Ищет файл в текущей директории и всех поддиректориях."""
-    root = Path.cwd()
+    """Ищет файл в корневой директории и всех поддиректориях."""
+    root = Path(__file__).resolve().parent.parent
     # 1. Проверяем прямо в корне
     direct_path = root / filename
     if direct_path.is_file():
@@ -24,7 +25,7 @@ def find_file(filename: str) -> Path | None:
             return path
     return None
 
-# ------------------- Подключение score.py -------------------
+# Подключение score.py
 score_path = find_file("score.py")
 if score_path is None:
     st.error("Файл score.py не найден. Оценка Precision@5 недоступна.")
@@ -42,17 +43,10 @@ else:
         def score_question(top5, correct):
             return 0.0
 
-# ------------------- Остальные импорты -------------------
+# Остальные импорты
 from llm import USE_OLLAMA, check_ollama, fetch_documents_for_chunks, generate_rag_answer
 from search import hybrid_search, initialize_search
 from settings import USE_GPU, USE_RERANKER
-
-# Пытаемся импортировать psutil для проверки памяти
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
 
 def _load_search_engine():
     """Загрузить модели и индексы."""
@@ -89,8 +83,6 @@ if "llm_answer" not in st.session_state:
     st.session_state.llm_answer = None
 if "last_query" not in st.session_state:
     st.session_state.last_query = ""
-if "trigger_search" not in st.session_state:
-    st.session_state.trigger_search = False
 if "eval_predictions" not in st.session_state:
     st.session_state.eval_predictions = None
 
@@ -108,11 +100,15 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Режим поиска")
     st.caption(f"Устройство: `{search_runtime.get('device', 'Неизвестно')}`")
-    # Добавлен вывод модели эмбеддингов в боковую панель (угол)
     st.caption(f"Модель эмбеддингов: `{search_runtime.get('embedding_model', 'Неизвестно')}`")
     st.caption(f"Реранкер: `{'вкл' if USE_RERANKER else 'выкл'}` (USE_RERANKER)")
     st.caption(f"GPU: `{'запрошен' if USE_GPU else 'выкл'}` (USE_GPU)")
-    st.caption(f"LLM: `{'вкл' if USE_OLLAMA else 'выкл'}` (USE_OLLAMA)")
+    
+    # ОТОБРАЖЕНИЕ LLM МОДЕЛИ ИЗ ОКРУЖЕНИЯ
+    llm_status = "вкл" if USE_OLLAMA else "выкл"
+    st.caption(f"LLM: `{llm_status}` (USE_OLLAMA)")
+    if USE_OLLAMA:
+        st.caption(f"Модель: `{LLM_MODEL_NAME}`")
 
     st.markdown("---")
     st.subheader("Параметры поиска")
@@ -145,7 +141,7 @@ if submitted and query.strip():
     with st.spinner("Ищем совпадения в репозитории..."):
         raw_results = hybrid_search(q_cleaned)
 
-        LOW_THRESHOLD = 30.0
+        LOW_THRESHOLD = 0.0
         filtered_results = [
             r for r in raw_results if r.get("score", 0) >= LOW_THRESHOLD
         ]
@@ -162,31 +158,6 @@ if submitted and query.strip():
 
 # Три вкладки: результаты, LLM-пояснение, оценка
 tab_results, tab_llm, tab_eval = st.tabs(["Найденные фрагменты кода", "Пояснение от ИИ", "Оценка Precision@5"])
-
-search_clicked = st.button("Запустить поиск", type="primary", use_container_width=True)
-search_triggered = search_clicked or st.session_state.get("trigger_search", False)
-
-if (search_triggered or (query.strip() and query.strip() != st.session_state.last_query)) and query.strip():
-    if st.session_state.get("trigger_search"):
-        st.session_state.trigger_search = False
-    q_cleaned = query.strip()
-
-    with st.spinner("Ищем совпадения в репозитории..."):
-        raw_results = hybrid_search(q_cleaned)
-
-        # Мягкий выходной фильтр (опускаем до 45.0, чтобы не резать базу)
-        LOW_THRESHOLD = 45.0
-        filtered_results = [r for r in raw_results if r.get("score", 0) >= LOW_THRESHOLD]
-
-        st.session_state.search_results = filtered_results
-        st.session_state.last_query = q_cleaned
-        st.session_state.llm_answer = None
-
-    if raw_results:
-        chunk_ids = [r["chunk_id"] for r in raw_results]
-        st.session_state.search_documents = fetch_documents_for_chunks(chunk_ids)
-    else:
-        st.session_state.search_documents = None
 
 if st.session_state.search_results:
     results = [r for r in st.session_state.search_results if r["type"] in filter_type]
@@ -221,8 +192,7 @@ if st.session_state.search_results:
             if not results:
                 st.info("Невозможно сгенерировать ответ: список фрагментов пуст из-за фильтров.")
             else:
-                # Добавлен вывод названия LLM-модели во вкладку с LLM
-                st.caption(f"Модель LLM: `{search_runtime.get('llm_model', 'Неизвестно')}`")
+                st.caption(f"Модель LLM: `{LLM_MODEL_NAME}`")
                 
                 if st.session_state.llm_answer is None:
                     with st.spinner("Нейросеть анализирует контекст и пишет ответ..."):
@@ -241,6 +211,7 @@ elif st.session_state.search_results is not None:
         st.warning("Ничего не найдено по данному запросу.")
 
 # 5. ВКЛАДКА ОЦЕНКИ PRECISION@5
+
 with tab_eval:
     st.header("Оценка точности поиска (Precision@5)")
     st.markdown("Метрика вычисляется по тестовому набору `eval_questions.json` с использованием логики `score.py` (допуск +-2 строки).")

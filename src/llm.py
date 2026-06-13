@@ -12,7 +12,7 @@ CHROMA_PATH = STORAGE_DIR / "chroma_db"
 COLLECTION_NAME = "code_chunks"
 # Read model from environment (configured in Dockerfile via LLM_MODEL)
 DEFAULT_MODEL = os.environ.get("LLM_MODEL", "mistral:7b")
-USE_OLLAMA = os.environ.get("USE_OLLAMA", "true").lower() not in {"0", "false", "no", "off"}
+USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() not in {"0", "false", "no", "off"}
 
 logger = logging.getLogger(__name__)
 

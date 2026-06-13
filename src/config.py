@@ -15,3 +15,4 @@ DEFAULT_QUESTIONS = SOURCE_PATH / "eval_questions.json"
 SCORE_SCRIPT = SOURCE_PATH / "score.py"
 # EMDENDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 EMDENDING_MODEL_NAME = "BAAI/bge-m3"
+LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("OLLAMA_MODEL", "llama3.2:latest"))
