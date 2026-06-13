@@ -16,7 +16,7 @@ services:
     environment:
       - USE_GPU=true
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=gemma2:9b
+      - LLM_MODEL=llama3.1:8b
       - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
       - USE_OLLAMA=true

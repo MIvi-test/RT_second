@@ -37,11 +37,11 @@ services:
       - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
     environment:
       - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=gemma2:9b
+      - LLM_MODEL=mistral:7b
       - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
       - USE_GPU=false
-      - USE_OLLAMA=true
+      - USE_OLLAMA=false
       - STORAGE_DIR=/storage
       - SOURCE_PATH=/app/dataset_case3_v1.0_fix/gymhero
     depends_on:
