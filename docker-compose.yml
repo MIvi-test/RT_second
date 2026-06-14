@@ -1,27 +1,4 @@
-networks:
-  internal:
-    driver: bridge
-
-volumes:
-  storage_data:
-    driver: local
-  hf_cache:
-    driver: local
-
 services:
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama                                
-    ports:
-      - "11434:11434"
-    volumes:
-      - ~/.ollama:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-      - OLLAMA_ORIGINS=*
-    networks:
-      - internal
-
   app:
     build:
       context: .
@@ -32,20 +9,11 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - storage_data:/storage
-      - hf_cache:/root/.cache/huggingface
-      - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
+      - C:\Users\mrtip\Downloads\dataset:/app/dataset_case3_v1.0_fix
     environment:
-      - OLLAMA_HOST=http://ollama:11434
-      - LLM_MODEL=mistral:7b
       - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
       - USE_GPU=false
       - USE_OLLAMA=false
-      - STORAGE_DIR=storage_data
+      - STORAGE_DIR=/app/storage
       - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
-    depends_on:
-      - ollama
-    networks:
-      - internal
-    
