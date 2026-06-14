@@ -1,44 +1,43 @@
 #!/bin/bash
 set -e
 
-OLLAMA_HOST="${OLLAMA_HOST:-http://ollama:11434}"
-MODEL="${LLM_MODEL:-qwen3.5:9b}"
+OLLAMA_HOST="${OLLAMA_HOST:-http://host.docker.internal:11434}"
+MODEL="${LLM_MODEL:-llama3.2:3b}"
 STORAGE_DIR="${STORAGE_DIR:-/storage}"
 SOURCE_PATH="${SOURCE_PATH:-/app/dataset_case3_v1.0_fix/}"
 
 echo "========================================================================="
-echo " entrypoint.sh — code search with Ollama"
+echo " entrypoint.sh — code search"
 echo " OLLAMA_HOST  = ${OLLAMA_HOST}"
 echo " MODEL        = ${MODEL}"
 echo " STORAGE_DIR  = ${STORAGE_DIR}"
 echo " SOURCE_PATH  = ${SOURCE_PATH}"
 echo " USE_RERANKER = ${USE_RERANKER:-false}"
 echo " USE_GPU      = ${USE_GPU:-false}"
-echo " USE_OLLAMA   = ${USE_OLLAMA:-true}"
+echo " USE_OLLAMA   = ${USE_OLLAMA:-false}"
 echo "========================================================================="
 
-# 1. Wait for Ollama
-echo "[1] Waiting for Ollama..."
-for i in {1..60}; do
-    if curl -sf "${OLLAMA_HOST}/api/tags" > /dev/null 2>&1; then
-        echo "[1] Ollama is ready."
-        break
-    fi
-    echo "  ... attempt $i/60"
-    sleep 3
-done
+# 1. Проверить что модель доступна (если LLM включена)
+if [ "${USE_OLLAMA:-false}" != "false" ]; then
+    echo "[1] Waiting for Ollama at ${OLLAMA_HOST}..."
+    for i in {1..60}; do
+        if curl -sf "${OLLAMA_HOST}/api/tags" > /dev/null 2>&1; then
+            echo "[1] Ollama is ready."
+            break
+        fi
+        echo "  ... attempt $i/60"
+        sleep 3
+    done
 
-# 2. Pull model if not already present (model comes from host via ~/.ollama volume)
-echo "[2] Checking model ${MODEL}..."
-if curl -sf "${OLLAMA_HOST}/api/show" -d "{\"model\": \"${MODEL}\"}" > /dev/null 2>&1; then
-    echo "[2] Model ${MODEL} already available (from host volume)."
-else
-    echo "[2] Model ${MODEL} not found in volume — pulling..."
-    curl -sf -X POST "${OLLAMA_HOST}/api/pull" \
-        -d "{\"model\": \"${MODEL}\", \"stream\": false}" > /dev/null 2>&1 || true
+    echo "[2] Checking model ${MODEL}..."
+    if curl -sf "${OLLAMA_HOST}/api/show" -d "{\"model\": \"${MODEL}\"}" > /dev/null 2>&1; then
+        echo "[2] Model ${MODEL} is available."
+    else
+        echo "[2] WARNING: Model ${MODEL} not found. Make sure it's pulled locally: ollama pull ${MODEL}"
+    fi
 fi
 
-# 3. Index code
+# 3. Index code (if not already indexed)
 if [ -f "${STORAGE_DIR}/bm25_index.pkl" ]; then
     echo "[3] Indexes already exist, skipping indexing."
 else
