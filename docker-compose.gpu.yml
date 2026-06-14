@@ -21,12 +21,12 @@ services:
     volumes:
       - ./storage_data:/storage
       - ${USERPROFILE}\.cache\huggingface:/root/.cache/huggingface
-      - ${USERPROFILE}\Downloads\dataset:/app/dataset_case3_v1.0_fix
+      - ${DATASET_PATH:-.}:/app/dataset_case3_v1.0_fix
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
       - LLM_MODEL=llama3.2:3b
       - PYTHONUNBUFFERED=1
-      - USE_RERANKER=true
+      - USE_RERANKER=false
       - USE_GPU=true
       - USE_OLLAMA=true
       - STORAGE_DIR=/storage
