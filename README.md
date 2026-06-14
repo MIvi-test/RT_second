@@ -71,20 +71,8 @@ up --build
 После старта: http://localhost:8501
 Для завершения работы выполняются аналогичные команды, но вместо `up --build` используется `down`:
 
-**CPU**:
-
 ```bash
-docker compose \  
--f docker-compose.yml \  
-down
-```
-
-**С поддержка GPU**:
-
-```bash
-docker compose \  
--f docker-compose.gpu.yml \  
-down
+docker compose down
 ```
 
 ---
@@ -131,10 +119,10 @@ uv run index.py
 # Отдельный терминал
 ollama serve
 # Скачать модель (один раз)
-ollama pull mistral:7b 
+ollama pull qwen3.5:9b 
 ```
 
-
+Для выбора другой модели необходимо изменить переменную `LLM_MODEL` (см. [далее](#variables))
 ### 5. UI
 
 ```bash
@@ -144,7 +132,7 @@ uv run streamlit run app.py
 Откройте http://localhost:8501
 
 ---
-## Переменные окружения
+<h2 id="variables">Переменные окружения</h2>
 
 | Переменная     | По умолчанию                       | Описание                                        |
 | -------------- | ---------------------------------- | ----------------------------------------------- |
@@ -154,14 +142,14 @@ uv run streamlit run app.py
 | `USE_GPU`      | `false`                            | Использовать CUDA для эмбеддингов и реранкера   |
 | `USE_OLLAMA`   | `true`                             | Включить RAG-генерацию через Ollama             |
 | `OLLAMA_HOST`  | `http://localhost:11434`           | Адрес Ollama-сервера                            |
-| `LLM_MODEL`    | `mistral:7b`                       | Модель для RAG-генерации                        |
-### Настройка для запуска через Docker
+| `LLM_MODEL`    | `qwen3.5:9b`                       | Модель для RAG-генерации                        |
+### Настройка запуска через Docker
 
 Для этого необходимо изменить следущие строки в раздели `enviroment` в файлах `docker-compose `и `docker-compose.gpu`
 ```yml
 environment:
 - OLLAMA_HOST=http://ollama:11434
-- LLM_MODEL=mistral:7b
+- LLM_MODEL=qwen3.5:9b
 - PYTHONUNBUFFERED=1
 - USE_RERANKER=false
 - USE_GPU=false
@@ -169,7 +157,7 @@ environment:
 - STORAGE_DIR=/storage
 - SOURCE_PATH=/dataset_case3_v1.0_fix/gymhero
 ```
-### Настройка для локального запуска
+### Настройка локального запуска
 
 #### Linux
 
@@ -180,7 +168,7 @@ export USE_RERANKER=true
 export USE_GPU=false
 export USE_OLLAMA=true
 export OLLAMA_HOST=http://localhost:11434
-export LLM_MODEL=
+export LLM_MODEL=qwen3.5:9b
 ```
 
 #### Windows
@@ -192,7 +180,7 @@ $env:USE_RERANKER="true"
 $env:USE_GPU="false"
 $env:USE_OLLAMA="true"
 $env:OLLAMA_HOST="http://localhost:11434"
-$env:LLM_MODEL=
+$env:LLM_MODEL="qwen3.5:9b"
 ```
 
 ---
@@ -258,3 +246,7 @@ $env:LLM_MODEL=
 ## Кэш моделей
 
 При старте Streamlit модели загружаются **один раз** через `@st.cache_resource` и остаются в RAM до перезапуска процесса. Веса Hugging Face кэшируются на диске (`~/.cache/huggingface`); в Docker для этого смонтирован volume `hf_cache`.
+
+## Выбор модели  эмбедингов
+
+## Выбор LLM
