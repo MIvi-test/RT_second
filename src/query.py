@@ -37,3 +37,10 @@ RESULTS_PATH.write_text(
     encoding="utf-8"
 )
 print(f"Done → {RESULTS_PATH}")
+
+
+__all__ = [
+    "SEARCH_METHOD",
+    "questions",
+    "results",
+]

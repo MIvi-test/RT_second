@@ -11,6 +11,13 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 from pathlib import Path
 
+__all__ = [
+    "find_file",
+    "get_top5_chunk_ids",
+    "_load_search_engine",
+    "_cached_check_ollama",
+]
+
 # Функция поиска файла
 def find_file(filename: str) -> Path | None:
     """Ищет файл в корневой директории и всех поддиректориях."""
@@ -24,6 +31,8 @@ def find_file(filename: str) -> Path | None:
         if path.is_file():
             return path
     return None
+
+
 
 # Подключение score.py
 score_path = find_file("score.py")
@@ -58,10 +67,11 @@ def _cached_check_ollama():
 def get_top5_chunk_ids(query: str) -> list[str]:
     """Возвращает список chunk_id (топ-5) для заданного запроса."""
     mode = st.session_state.get("search_mode", "hybrid")
+    use_translation = st.session_state.get("use_translation", True)
     if mode == "semantic":
-        raw_results = semantic_search(query)
+        raw_results = semantic_search(query, use_translation=use_translation)
     else:
-        raw_results = hybrid_search(query)
+        raw_results = hybrid_search(query, use_translation=use_translation)
     top5 = [r["chunk_id"] for r in raw_results[:5]]
     return top5
 
@@ -128,6 +138,14 @@ with st.sidebar:
     # Сохраняем в session_state для доступа в других частях приложения
     st.session_state["search_mode"] = search_mode
 
+    # Переключатель перевода — управляется из UI (по умолчанию включён)
+    use_translation = st.checkbox(
+        "Переводить запросы (если они на русском)",
+        value=True,
+        help="Если включено, русские запросы будут переводиться на английский перед поиском",
+    )
+    st.session_state["use_translation"] = use_translation
+
     enable_llm = st.checkbox(
         "Включить генерацию RAG-ответа",
         value=ollama_ok,
@@ -155,10 +173,11 @@ if submitted and query.strip():
     q_cleaned = query.strip()
     with st.spinner("Ищем совпадения в репозитории..."):
         mode = st.session_state.get("search_mode", "hybrid")
+        use_translation = st.session_state.get("use_translation", True)
         if mode == "semantic":
-            raw_results = semantic_search(q_cleaned)
+            raw_results = semantic_search(q_cleaned, use_translation=use_translation)
         else:
-            raw_results = hybrid_search(q_cleaned)
+            raw_results = hybrid_search(q_cleaned, use_translation=use_translation)
 
         LOW_THRESHOLD = 0.0
         filtered_results = [
