@@ -13,6 +13,13 @@ import chromadb
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
+__all__ = [
+    "get_node_source",
+    "tokenize_code",
+    "extract_chunks_from_file",
+    "main",
+]
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*__path__.*")
 

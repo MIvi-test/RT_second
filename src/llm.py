@@ -2,16 +2,26 @@ from __future__ import annotations
 
 import logging
 import re
+from typing import Any, Dict, List, Optional
+
 import chromadb
 
 from config import STORAGE_DIR, CHROMA_PATH, COLLECTION_NAME, LLM_MODEL_NAME, USE_OLLAMA
 
+
+__all__ = [
+    "check_ollama",
+    "fetch_documents_for_chunks",
+    "generate_rag_answer",
+]
+
 logger = logging.getLogger(__name__)
 
-_collection = None
+# typed module-level collection singleton
+_collection: Optional[Any] = None
 
 
-def _get_collection():
+def _get_collection() -> Any:
     global _collection
     if _collection is None:
         client = chromadb.PersistentClient(path=str(CHROMA_PATH))
@@ -19,7 +29,7 @@ def _get_collection():
     return _collection
 
 
-def check_ollama(model: str = LLM_MODEL_NAME) -> tuple[bool, str | None]:
+def check_ollama(model: str = LLM_MODEL_NAME) -> tuple[bool, Optional[str]]:
     """Проверить доступность Ollama и наличие модели. Возвращает (ok, сообщение об ошибке)."""
     if not USE_OLLAMA:
         return False, "LLM disabled"
@@ -42,7 +52,7 @@ def check_ollama(model: str = LLM_MODEL_NAME) -> tuple[bool, str | None]:
         return False, "Ollama недоступна. Запустите: ollama serve"
 
 
-def fetch_documents_for_chunks(chunk_ids: list[str]) -> dict[str, str]:
+def fetch_documents_for_chunks(chunk_ids: List[str]) -> Dict[str, str]:
     """Загрузить тексты чанков из ChromaDB по их id."""
     if not chunk_ids:
         return {}
@@ -56,7 +66,7 @@ def _detect_lang(text: str) -> str:
     return "ru" if re.search(r"[а-яА-ЯёЁ]", text) else "en"
 
 
-def _build_prompt(question: str, results: list[dict], documents: dict[str, str]) -> str:
+def _build_prompt(question: str, results: List[Dict[str, Any]], documents: Dict[str, str]) -> str:
     lang = _detect_lang(question)
 
     if lang == "ru":
@@ -107,8 +117,8 @@ def _build_prompt(question: str, results: list[dict], documents: dict[str, str])
 
 def generate_rag_answer(
     question: str,
-    results: list[dict],
-    documents: dict[str, str] | None = None,
+    results: List[Dict[str, Any]],
+    documents: Optional[Dict[str, str]] = None,
     model: str = LLM_MODEL_NAME,
 ) -> str:
     """Сгенерировать RAG-ответ: вопрос + топ-N фрагментов → связный текст."""

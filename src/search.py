@@ -2,6 +2,8 @@ import json
 import os
 import pickle
 import re
+import logging
+from functools import lru_cache
 import numpy as np
 from pathlib import Path
 import chromadb
@@ -9,22 +11,54 @@ from deep_translator import GoogleTranslator
 from sentence_transformers import SentenceTransformer
 from sentence_transformers import CrossEncoder
 from config import *
+from typing import Any, Dict, List, Optional
+
+# Logger
+logger = logging.getLogger(__name__)
+try:
+    logging.basicConfig()
+    logger.setLevel(getattr(logging, LOG_LEVEL.upper(), logging.INFO))
+except Exception:
+    # fallback if LOG_LEVEL invalid or basicConfig already called
+    logger.setLevel(logging.INFO)
+
+__all__ = [
+    "initialize_search",
+    "semantic_search",
+    "hybrid_search",
+    "tokenize_code",
+]
 
 # Module-level singletons: resources are loaded lazily on first search call
-_model = None
-_collection = None
-_bm25 = None
-_bm25_meta = None
-_reranker = None
-_device: str | None = None
+_model: Optional[Any] = None
+_collection: Optional[Any] = None
+_bm25: Optional[Any] = None
+_bm25_meta: Optional[dict] = None
+_reranker: Optional[Any] = None
+_device: Optional[str] = None
+
+# Method name constants to avoid magic strings
+METHOD_SEMANTIC = "semantic"
+METHOD_HYBRID = "hybrid"
+METHOD_SUFFIX_RERANK = " + reranker"
+METHOD_SEMANTIC_WITH_RERANK = METHOD_SEMANTIC + METHOD_SUFFIX_RERANK
+METHOD_HYBRID_WITH_RERANK = METHOD_HYBRID + METHOD_SUFFIX_RERANK
 
 
 def _translate_to_english(text: str) -> str:
-    """Translate query to English if it contains Cyrillic characters."""
+    """Translate query to English if it contains Cyrillic characters.
+
+    This function always attempts translation for Cyrillic text. Control of
+    whether translation should occur per-call is handled by the caller
+    (search functions) via their `use_translation` parameter.
+    """
+    # Простая детекция кириллицы — переводим только русскоязычные запросы
     if re.search(r"[а-яА-ЯёЁ]", text):
         try:
+            logger.debug("Translating query to English via GoogleTranslator")
             return GoogleTranslator(source="auto", target="en").translate(text)
         except Exception:
+            logger.exception("Translation failed; using original text")
             return text  # если перевод упал — используем оригинал
     return text
 
@@ -37,19 +71,23 @@ def tokenize_code(text: str) -> list[str]:
 
 
 def _load():
-    """Lazy load model, optional reranker, Chroma collection and BM25 index."""
+    """Lazy load model, optional reranker, Chroma collection and BM25 index.
+
+    Note: this function mutates module-level singletons; callers should use
+    `_ensure_loaded()` which is cached to avoid repeated heavy work.
+    """
     global _model, _collection, _bm25, _bm25_meta, _reranker, _device
 
     if _device is None:
         _device = resolve_device()
-        print(f"[search] device={_device}, reranker={USE_RERANKER}")
+        logger.info("[search] device=%s, reranker=%s", _device, USE_RERANKER)
 
     if _model is None:
-        print(f"Loading SentenceTransformer model on {_device}...")
+        logger.info("Loading SentenceTransformer model on %s...", _device)
         _model = SentenceTransformer(EMBEDDING_MODEL_NAME, device=_device)
 
     if USE_RERANKER and _reranker is None:
-        print(f"Loading CrossEncoder reranker on {_device}...")
+        logger.info("Loading CrossEncoder reranker on %s...", _device)
         _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device=_device)
 
     if _collection is None:
@@ -69,9 +107,16 @@ def _load():
             _bm25_meta = json.load(f)
 
 
+# Cache the heavy load so repeated Streamlit reruns don't retrigger it.
+@lru_cache(maxsize=1)
+def _ensure_loaded() -> bool:
+    _load()
+    return True
+
+
 def initialize_search() -> dict:
     """Load search resources once and return runtime info for UI/logging."""
-    _load()
+    _ensure_loaded()
     return {
         "device": _device or "cpu",
         "use_reranker": USE_RERANKER,
@@ -118,10 +163,11 @@ def _apply_reranker(
     return candidates
 
 
-def semantic_search(query: str, top_k: int = 5) -> list[dict]:
+def semantic_search(query: str, top_k: int = 5, use_translation: Optional[bool] = True) -> list[dict]:
     """Semantic search with optional CrossEncoder reranking."""
-    _load()
-    query = _translate_to_english(query)
+    _ensure_loaded()
+    if use_translation:
+        query = _translate_to_english(query)
 
     fetch_k = 75 if USE_RERANKER else top_k
     include_docs = USE_RERANKER
@@ -154,8 +200,8 @@ def semantic_search(query: str, top_k: int = 5) -> list[dict]:
         query,
         candidates,
         score_key="semantic_score",
-        method_with="semantic + reranker",
-        method_without="semantic",
+        method_with=METHOD_SEMANTIC_WITH_RERANK,
+        method_without=METHOD_SEMANTIC,
     )
     return scored[:top_k]
 
@@ -165,10 +211,12 @@ def hybrid_search(
     top_k: int = 5,
     semantic_weight: float = 0.5,
     bm25_weight: float = 0.5,
+    use_translation: Optional[bool] = True,
 ) -> list[dict]:
     """Combine semantic and BM25 scores, optionally rerank with CrossEncoder."""
-    _load()
-    query = _translate_to_english(query)
+    _ensure_loaded()
+    if use_translation:
+        query = _translate_to_english(query)
 
     fetch_k = top_k * 3
     include_docs = USE_RERANKER
@@ -241,7 +289,7 @@ def hybrid_search(
         query,
         top_candidates,
         score_key="hybrid_score",
-        method_with="hybrid + reranker",
-        method_without="hybrid",
+        method_with=METHOD_HYBRID_WITH_RERANK,
+        method_without=METHOD_HYBRID,
     )
     return scored[:top_k]
