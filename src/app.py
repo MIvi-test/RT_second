@@ -2,7 +2,7 @@
 import sys
 import streamlit as st
 import json
-from config import *  
+from config import SOURCE_PATH, LLM_MODEL_NAME, USE_GPU, USE_RERANKER, USE_OLLAMA
 
 try:
     import psutil
@@ -44,9 +44,8 @@ else:
             return 0.0
 
 # Остальные импорты
-from llm import USE_OLLAMA, check_ollama, fetch_documents_for_chunks, generate_rag_answer
+from llm import check_ollama, fetch_documents_for_chunks, generate_rag_answer
 from search import hybrid_search, initialize_search
-from settings import USE_GPU, USE_RERANKER
 
 def _load_search_engine():
     """Загрузить модели и индексы."""

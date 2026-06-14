@@ -12,7 +12,6 @@ from config import *
 import chromadb
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
-from settings import resolve_device
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 warnings.filterwarnings("ignore", message=".*__path__.*")
@@ -154,11 +153,11 @@ def main() -> int:
 
     # --- 3. Compute embeddings ---
     device = resolve_device()
-    print(f"[index] Loading {EMDENDING_MODEL_NAME} on {device} …")
+    print(f"[index] Loading {EMBEDDING_MODEL_NAME} on {device} …")
     try:
-        embed_model = SentenceTransformer(EMDENDING_MODEL_NAME, device=device)
+        embed_model = SentenceTransformer(EMBEDDING_MODEL_NAME, device=device)
     except Exception:
-        print(f"[ERROR] Could not load model '{EMDENDING_MODEL_NAME}'")
+        print(f"[ERROR] Could not load model '{EMBEDDING_MODEL_NAME}'")
         traceback.print_exc()
         return 1
 
