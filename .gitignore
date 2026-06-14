@@ -9,3 +9,4 @@ results.json
 bm25_index.pkl
 bm25_meta.json
 storage_data/*
+score.py
