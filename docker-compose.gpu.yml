@@ -4,7 +4,7 @@ networks:
     driver: bridge
 
 volumes:
-  storage_data:
+  storage:
     driver: local
   hf_cache:
     driver: local
@@ -40,11 +40,11 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./storage:/storage
+      - storage:/storage
       - hf_cache:/root/.cache/huggingface
-      - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
+      - C:\Users\mrtip\Downloads\dataset:/app/dataset_case3_v1.0_fix
     environment:
-      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_HOST=http://host.docker.internal:11434
       - LLM_MODEL=llama3.2:3b
       - PYTHONUNBUFFERED=1
       - USE_RERANKER=false

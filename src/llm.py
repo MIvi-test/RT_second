@@ -1,18 +1,10 @@
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
 import re
 import chromadb
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
-CHROMA_PATH = STORAGE_DIR / "chroma_db"
-COLLECTION_NAME = "code_chunks"
-# Read model from environment (configured in Dockerfile via LLM_MODEL)
-DEFAULT_MODEL = os.environ.get("LLM_MODEL", "mistral:7b")
-USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() not in {"0", "false", "no", "off"}
+from config import STORAGE_DIR, CHROMA_PATH, COLLECTION_NAME, LLM_MODEL_NAME, USE_OLLAMA
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +19,7 @@ def _get_collection():
     return _collection
 
 
-def check_ollama(model: str = DEFAULT_MODEL) -> tuple[bool, str | None]:
+def check_ollama(model: str = LLM_MODEL_NAME) -> tuple[bool, str | None]:
     """Проверить доступность Ollama и наличие модели. Возвращает (ok, сообщение об ошибке)."""
     if not USE_OLLAMA:
         return False, "LLM disabled"
@@ -117,7 +109,7 @@ def generate_rag_answer(
     question: str,
     results: list[dict],
     documents: dict[str, str] | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str = LLM_MODEL_NAME,
 ) -> str:
     """Сгенерировать RAG-ответ: вопрос + топ-N фрагментов → связный текст."""
     if not results:
