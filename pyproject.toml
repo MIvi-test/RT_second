@@ -15,4 +15,5 @@ dependencies = [
     "psutil>=7.2.2",
     "googletrans>=4.0.2",
     "deep-translator>=1.11.4",
+    "javalang>=0.13.0",
 ]

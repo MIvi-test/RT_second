@@ -212,27 +212,6 @@ def main() -> int:
         traceback.print_exc()
         return 1
 
-    # --- 5. Run evaluation if eval files are present ---
-    if (
-        SCORE_SCRIPT.exists()
-        and DEFAULT_PREDICTIONS.exists()
-        and DEFAULT_QUESTIONS.exists()
-    ):
-        print("\n[index] Running score.py …")
-        subprocess.run(
-            [
-                sys.executable,
-                str(SCORE_SCRIPT),
-                "--predictions",
-                str(DEFAULT_PREDICTIONS),
-                "--questions",
-                str(DEFAULT_QUESTIONS),
-            ],
-            check=False,
-        )
-    else:
-        print("[index] Eval files not found – skipping score.py")
-
     print("[index] Done ✓")
     return 0
 
