@@ -45,7 +45,7 @@ else:
 
 # Остальные импорты
 from llm import check_ollama, fetch_documents_for_chunks, generate_rag_answer
-from search import hybrid_search, initialize_search
+from search import hybrid_search, initialize_search, semantic_search
 
 def _load_search_engine():
     """Загрузить модели и индексы."""
@@ -57,7 +57,11 @@ def _cached_check_ollama():
 # Функция для получения топ-5 chunk_id по запросу (используется при оценке)
 def get_top5_chunk_ids(query: str) -> list[str]:
     """Возвращает список chunk_id (топ-5) для заданного запроса."""
-    raw_results = hybrid_search(query)
+    mode = st.session_state.get("search_mode", "hybrid")
+    if mode == "semantic":
+        raw_results = semantic_search(query)
+    else:
+        raw_results = hybrid_search(query)
     top5 = [r["chunk_id"] for r in raw_results[:5]]
     return top5
 
@@ -70,7 +74,7 @@ st.set_page_config(
 )
 
 search_runtime = _load_search_engine()
-st.title("Семантический поиск по коду")
+st.title("Поиск по коду")
 st.markdown("---")
 
 # 2. Инициализация переменных в st.session_state
@@ -84,6 +88,8 @@ if "last_query" not in st.session_state:
     st.session_state.last_query = ""
 if "eval_predictions" not in st.session_state:
     st.session_state.eval_predictions = None
+if "save_triggered" not in st.session_state:
+    st.session_state["save_triggered"] = False
 
 # 3. БОКОВАЯ ПАНЕЛЬ НАСТРОЕК (SIDEBAR)
 with st.sidebar:
@@ -112,6 +118,16 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Параметры поиска")
 
+    # Выбор режима поиска: semantic или hybrid
+    search_mode = st.radio(
+        "Выберите режим поиска",
+        options=["semantic", "hybrid"],
+        index=1,
+        help="semantic — только эмбеддинги; hybrid — комбинированный BM25 и эмбеддинги",
+    )
+    # Сохраняем в session_state для доступа в других частях приложения
+    st.session_state["search_mode"] = search_mode
+
     enable_llm = st.checkbox(
         "Включить генерацию RAG-ответа",
         value=ollama_ok,
@@ -138,7 +154,11 @@ with st.form(key="search_form"):
 if submitted and query.strip():
     q_cleaned = query.strip()
     with st.spinner("Ищем совпадения в репозитории..."):
-        raw_results = hybrid_search(q_cleaned)
+        mode = st.session_state.get("search_mode", "hybrid")
+        if mode == "semantic":
+            raw_results = semantic_search(q_cleaned)
+        else:
+            raw_results = hybrid_search(q_cleaned)
 
         LOW_THRESHOLD = 0.0
         filtered_results = [
@@ -304,8 +324,12 @@ with tab_eval:
         # Кнопка сохранения results.json (появляется после оценки)
         if st.session_state.get("eval_predictions"):
             if st.button("Сохранить results.json для отчёта"):
+                st.session_state["save_triggered"] = True
+
+            if st.session_state.get("save_triggered"):
                 output_path = Path("results.json")
                 with open(output_path, "w", encoding="utf-8") as f:
                     json.dump(st.session_state["eval_predictions"], f, ensure_ascii=False, indent=2)
                 st.success(f"Файл сохранён: {output_path.absolute()}")
                 st.info("Вы можете проверить его командой: `python score.py --predictions results.json --questions eval_questions.json`")
+                st.session_state["save_triggered"] = False
