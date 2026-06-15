@@ -13,8 +13,10 @@ from config import *
 # Module-level singletons: resources are loaded lazily on first search call
 _model = None
 _collection = None
-_bm25 = None
-_bm25_meta = None
+_bm25_python = None
+_bm25_meta_python = None
+_bm25_java = None
+_bm25_meta_java = None
 _reranker = None
 _device: str | None = None
 
@@ -25,20 +27,31 @@ def _translate_to_english(text: str) -> str:
         try:
             return GoogleTranslator(source="auto", target="en").translate(text)
         except Exception:
-            return text  # если перевод упал — используем оригинал
+            return text
     return text
 
 
 def tokenize_code(text: str) -> list[str]:
-    # split CamelCase and non-alphanumeric chars, return lowercase tokens
+    """Tokenize code: split CamelCase and keep only alphanumeric."""
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
     text = re.sub(r"[^a-zA-Zа-яА-Я0-9]", " ", text)
     return text.lower().split()
 
 
-def _load():
+def _get_lang_filter(lang: str) -> dict | None:
+    """Return Chroma where filter for given language based on file extension."""
+    if lang == "java":
+        return {"file_path": {"$contains": ".java"}}
+    elif lang == "python":
+        return {"file_path": {"$contains": ".py"}}
+    else:
+        return None  # no filter
+
+
+def _load(lang: str = "python"):
     """Lazy load model, optional reranker, Chroma collection and BM25 index."""
-    global _model, _collection, _bm25, _bm25_meta, _reranker, _device
+    global _model, _collection, _reranker, _device
+    global _bm25_python, _bm25_meta_python, _bm25_java, _bm25_meta_java
 
     if _device is None:
         _device = resolve_device()
@@ -50,33 +63,51 @@ def _load():
 
     if USE_RERANKER and _reranker is None:
         print(f"Loading CrossEncoder reranker on {_device}...")
-        _reranker = CrossEncoder("BAAI/bge-reranker-v2-m3", device=_device)
+        _reranker = CrossEncoder(RERANKER_MODEL_NAME, device=_device)
 
     if _collection is None:
-        client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-        _collection = client.get_collection(COLLECTION_NAME)
+        try:
+            client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+            _collection = client.get_collection(COLLECTION_NAME)
+        except Exception as e:
+            raise RuntimeError(f"Не удалось загрузить Chroma коллекцию '{COLLECTION_NAME}': {e}. Убедитесь, что индексация выполнена.")
 
-    if _bm25 is None:
-        bm25_path = STORAGE_DIR / "bm25_index.pkl"
-        meta_path = STORAGE_DIR / "bm25_meta.json"
-
-        if not bm25_path.exists():
-            raise FileNotFoundError("bm25_index.pkl not found — run index.py")
-
-        with open(bm25_path, "rb") as f:
-            _bm25 = pickle.load(f)
-        with open(meta_path, "r", encoding="utf-8") as f:
-            _bm25_meta = json.load(f)
+    if lang == "java":
+        if _bm25_java is None:
+            bm25_path = BM25_INDEX_JAVA
+            meta_path = BM25_META_JAVA
+            try:
+                if not bm25_path.exists():
+                    raise FileNotFoundError(f"Java BM25 index not found: {bm25_path}")
+                with open(bm25_path, "rb") as f:
+                    _bm25_java = pickle.load(f)
+                with open(meta_path, "r", encoding="utf-8") as f:
+                    _bm25_meta_java = json.load(f)
+            except FileNotFoundError as e:
+                raise RuntimeError(f"Ошибка загрузки Java индекса: {e}. Запустите index.py для Java.")
+        return _bm25_java, _bm25_meta_java
+    else:
+        if _bm25_python is None:
+            try:
+                if not BM25_INDEX.exists():
+                    raise FileNotFoundError("bm25_index.pkl not found — run index.py")
+                with open(BM25_INDEX, "rb") as f:
+                    _bm25_python = pickle.load(f)
+                with open(BM25_META, "r", encoding="utf-8") as f:
+                    _bm25_meta_python = json.load(f)
+            except FileNotFoundError as e:
+                raise RuntimeError(f"Ошибка загрузки Python индекса: {e}. Запустите index.py.")
+        return _bm25_python, _bm25_meta_python
 
 
 def initialize_search() -> dict:
     """Load search resources once and return runtime info for UI/logging."""
-    _load()
+    _load()  # loads Python by default
     return {
         "device": _device or "cpu",
         "use_reranker": USE_RERANKER,
         "embedding_model": EMBEDDING_MODEL_NAME,
-        "reranker_model": "BAAI/bge-reranker-v2-m3" if USE_RERANKER else None,
+        "reranker_model": RERANKER_MODEL_NAME if USE_RERANKER else None,
     }
 
 
@@ -118,9 +149,13 @@ def _apply_reranker(
     return candidates
 
 
-def semantic_search(query: str, top_k: int = 5) -> list[dict]:
-    """Semantic search with optional CrossEncoder reranking."""
-    _load()
+def semantic_search(query: str, top_k: int = 5, lang: str = "python") -> list[dict]:
+    """Semantic search with optional CrossEncoder reranking, filtered by language."""
+    try:
+        _load(lang)
+    except RuntimeError as e:
+        print(f"[ERROR] {e}")
+        return []  
     query = _translate_to_english(query)
 
     fetch_k = 75 if USE_RERANKER else top_k
@@ -128,9 +163,11 @@ def semantic_search(query: str, top_k: int = 5) -> list[dict]:
 
     query_vec = _model.encode([query], convert_to_numpy=True)
 
+    where_filter = _get_lang_filter(lang)
     hits = _collection.query(
         query_embeddings=query_vec.tolist(),
         n_results=fetch_k,
+        where=where_filter,
         include=["metadatas", "distances"] + (["documents"] if include_docs else []),
     )
 
@@ -165,20 +202,34 @@ def hybrid_search(
     top_k: int = 5,
     semantic_weight: float = 0.5,
     bm25_weight: float = 0.5,
+    lang: str = "python",
 ) -> list[dict]:
     """Combine semantic and BM25 scores, optionally rerank with CrossEncoder."""
-    _load()
+    # Load BM25 index for the requested language
+    try:
+        bm25, bm25_meta = _load(lang)
+    except RuntimeError as e:
+        print(f"[ERROR] {e}")
+        return []
+    # Load model & collection (already done inside _load)
     query = _translate_to_english(query)
 
     fetch_k = top_k * 3
     include_docs = USE_RERANKER
 
     query_vec = _model.encode([query], convert_to_numpy=True)
-    hits = _collection.query(
-        query_embeddings=query_vec.tolist(),
-        n_results=fetch_k,
-        include=["metadatas", "distances"] + (["documents"] if include_docs else []),
-    )
+
+    where_filter = _get_lang_filter(lang)
+    try:
+        hits = _collection.query(
+            query_embeddings=query_vec.tolist(),
+            n_results=fetch_k,
+            where=where_filter,
+            include=["metadatas", "distances"] + (["documents"] if include_docs else []),
+        )
+    except Exception as e:
+        print(f"[ERROR] Chroma query failed: {e}")
+        return []
 
     sem_scores: dict[str, float] = {}
     meta_by_id: dict[str, dict] = {}
@@ -194,7 +245,7 @@ def hybrid_search(
             doc_by_id[cid] = doc
 
     tokens = tokenize_code(query)
-    raw_scores = _bm25.get_scores(tokens)
+    raw_scores = bm25.get_scores(tokens)
 
     max_score = raw_scores.max()
     bm25_scores: dict[str, float] = {}
@@ -205,7 +256,7 @@ def hybrid_search(
 
         for idx in top_indices:
             if norm[idx] > 0:
-                bm25_meta_item = _bm25_meta[idx]
+                bm25_meta_item = bm25_meta[idx]
                 rel_path = bm25_meta_item.get("file_path", "?")
                 name = bm25_meta_item.get("name", "?")
                 start_line = bm25_meta_item.get("start_line", "0")
@@ -219,8 +270,8 @@ def hybrid_search(
     combined = []
     for cid in all_ids:
         sem = sem_scores.get(cid, 0.0)
-        bm25 = bm25_scores.get(cid, 0.0)
-        final = semantic_weight * sem + bm25_weight * bm25
+        bm25_val = bm25_scores.get(cid, 0.0)
+        final = semantic_weight * sem + bm25_weight * bm25_val
 
         meta = meta_by_id[cid]
         item = {

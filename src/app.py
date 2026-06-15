@@ -4,12 +4,12 @@ import streamlit as st
 import json
 import hashlib
 from config import (
-    SOURCE_PATH, 
-    LLM_MODEL_NAME, 
-    USE_GPU, 
-    USE_RERANKER, 
+    SOURCE_PATH,
+    LLM_MODEL_NAME,
+    USE_GPU,
+    USE_RERANKER,
     USE_OLLAMA,
-    )
+)
 
 try:
     import psutil
@@ -66,12 +66,13 @@ from llm import fetch_documents_for_chunks, generate_rag_answer
 from search import hybrid_search, semantic_search
 
 def get_top5_chunk_ids(query: str) -> list[str]:
-    """Возвращает список chunk_id (топ-5) для заданного запроса."""
+    """Возвращает список chunk_id (топ-5) для заданного запроса с учётом выбранного языка."""
     mode = st.session_state.get("search_mode", "hybrid")
+    lang = st.session_state.get("search_lang", "python")
     if mode == "semantic":
-        raw_results = semantic_search(query)
+        raw_results = semantic_search(query, lang=lang)
     else:
-        raw_results = hybrid_search(query)
+        raw_results = hybrid_search(query, lang=lang)
     return [r["chunk_id"] for r in raw_results[:5]]
 
 # ---------------------- НАСТРОЙКА СТРАНИЦЫ ----------------------
@@ -101,6 +102,8 @@ if "save_triggered" not in st.session_state:
     st.session_state["save_triggered"] = False
 if "search_input" not in st.session_state:
     st.session_state.search_input = ""
+if "search_lang" not in st.session_state:
+    st.session_state.search_lang = "python"
 
 # ---------------------- БОКОВАЯ ПАНЕЛЬ (только информация и фильтр) ----------------------
 with st.sidebar:
@@ -140,8 +143,18 @@ with st.form(key="search_form"):
         placeholder="Например: как устроена авторизация пользователя?",
         max_chars=200,
     )
-    
-    # Параметры, которые не должны вызывать перерисовку до отправки формы
+
+    # --- ДОБАВЛЯЕМ ПЕРЕКЛЮЧАТЕЛЬ ЯЗЫКА ---
+    lang_choice = st.selectbox(
+        "Язык кода:",
+        options=["Python", "Java"],
+        index=0,
+        help="Выберите язык, по которому будет выполняться поиск (BM25 и фильтрация коллекции)."
+    )
+    # Преобразуем в формат, ожидаемый search.py
+    lang_value = "python" if lang_choice == "Python" else "java"
+
+    # Параметры поиска
     col1, col2 = st.columns(2)
     with col1:
         search_mode = st.radio(
@@ -156,27 +169,32 @@ with st.form(key="search_form"):
             value=ollama_ok,
             disabled=not ollama_ok,
         )
-    
+
     submitted = st.form_submit_button("Запустить поиск", type="primary", use_container_width=True)
 
-# Сохраняем выбранный режим в session_state для использования в других функциях
+# Сохраняем выбранные параметры в session_state
 st.session_state["search_mode"] = search_mode
 st.session_state["enable_llm"] = enable_llm
+st.session_state["search_lang"] = lang_value
 
 # ---------------------- ОБРАБОТКА ПОИСКА ----------------------
 if submitted and query.strip():
     q_cleaned = query.strip()
     with st.spinner("Ищем совпадения в репозитории..."):
         mode = st.session_state["search_mode"]
-        if mode == "semantic":
-            raw_results = semantic_search(q_cleaned)
-        else:
-            raw_results = hybrid_search(q_cleaned)
+        lang = st.session_state["search_lang"]
+        try:
+            if mode == "semantic":
+                raw_results = semantic_search(q_cleaned, lang=lang)
+            else:
+                raw_results = hybrid_search(q_cleaned, lang=lang)
+        except Exception as e:
+            st.error(f"Ошибка при выполнении поиска: {e}")
+            raw_results = []
 
         filtered_results = [r for r in raw_results if r.get("score", 0) >= 0.0]
         st.session_state.search_results = filtered_results
         st.session_state.last_query = q_cleaned
-        # st.session_state.search_input = q_cleaned
         st.session_state.llm_answer = None
 
     if raw_results:
@@ -190,7 +208,7 @@ tab_results, tab_llm, tab_eval = st.tabs(["Найденные фрагменты
 
 if st.session_state.search_results:
     results = [r for r in st.session_state.search_results if r["type"] in filter_type]
-    
+
     with tab_results:
         if not results:
             st.warning("В текущем ТОП-5 нет объектов выбранного типа. Измените фильтр в боковой панели.")
@@ -206,7 +224,16 @@ if st.session_state.search_results:
                         st.metric(label="Релевантность", value=f"{hit['score']}%")
                     with st.expander("Посмотреть исходный код фрагмента", expanded=(idx == 1)):
                         code_content = st.session_state.search_documents.get(hit["chunk_id"], "# Код отсутствует")
-                        st.code(code_content, language="python")
+                        # Определяем язык для подсветки по расширению файла или по выбранному языку
+                        file_path = hit.get("file_path", "")
+                        if file_path.endswith(".py"):
+                            code_lang = "python"
+                        elif file_path.endswith(".java"):
+                            code_lang = "java"
+                        else:
+                            # fallback на язык поиска
+                            code_lang = st.session_state.get("search_lang", "python")
+                        st.code(code_content, language=code_lang)
 
     with tab_llm:
         if st.session_state.get("enable_llm", False):
@@ -230,7 +257,7 @@ elif st.session_state.search_results is not None:
     with tab_results:
         st.warning("Ничего не найдено по данному запросу.")
 
-# ---------------------- ОЦЕНКА (без изменений) ----------------------
+# ---------------------- ОЦЕНКА ----------------------
 with tab_eval:
     st.header("Оценка точности поиска (Precision@5)")
     st.markdown("Метрика вычисляется по тестовому набору `eval_questions.json` с использованием логики `score.py` (допуск +-2 строки).")
