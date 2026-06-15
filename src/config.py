@@ -24,6 +24,7 @@ LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("OLLAMA_MODEL",
 USE_GPU = os.environ.get("USE_GPU", "false").lower() not in {"0", "false", "no", "off"}
 USE_RERANKER = os.environ.get("USE_RERANKER", "false").lower() not in {"0", "false", "no", "off"}
 USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() not in {"0", "false", "no", "off"}
+LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 
 def resolve_device() -> str:
