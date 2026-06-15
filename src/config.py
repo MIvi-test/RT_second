@@ -18,6 +18,7 @@ SCORE_SCRIPT = SOURCE_PATH / "score.py"
 # EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3-retromae"
 LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("OLLAMA_MODEL", "llama3.2:3b"))
+RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 
 # Flags from environment
 USE_GPU = os.environ.get("USE_GPU", "false").lower() not in {"0", "false", "no", "off"}
