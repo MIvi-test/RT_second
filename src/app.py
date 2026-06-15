@@ -2,7 +2,14 @@
 import sys
 import streamlit as st
 import json
-from config import SOURCE_PATH, LLM_MODEL_NAME, USE_GPU, USE_RERANKER, USE_OLLAMA
+import hashlib
+from config import (
+    SOURCE_PATH, 
+    LLM_MODEL_NAME, 
+    USE_GPU, 
+    USE_RERANKER, 
+    USE_OLLAMA,
+    )
 
 try:
     import psutil
@@ -11,15 +18,25 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 from pathlib import Path
 
-# Функция поиска файла
+# ---------------------- КЭШИРОВАНИЕ ----------------------
+@st.cache_resource
+def _load_search_engine():
+    """Загрузить модели и индексы (кэшируется)."""
+    from search import initialize_search
+    return initialize_search()
+
+@st.cache_resource
+def _cached_check_ollama():
+    from llm import check_ollama
+    return check_ollama()
+
+# ---------------------- ОСТАЛЬНЫЕ ФУНКЦИИ ----------------------
 def find_file(filename: str) -> Path | None:
     """Ищет файл в корневой директории и всех поддиректориях."""
     root = Path(__file__).resolve().parent.parent
-    # 1. Проверяем прямо в корне
     direct_path = root / filename
     if direct_path.is_file():
         return direct_path
-    # 2. Рекурсивный поиск
     for path in root.rglob(filename):
         if path.is_file():
             return path
@@ -32,29 +49,22 @@ if score_path is None:
     def score_question(top5, correct):
         return 0.0
 else:
-    # Добавляем директорию score.py в sys.path, если её там нет
     score_dir = score_path.parent
     if str(score_dir) not in sys.path:
         sys.path.insert(0, str(score_dir))
     try:
-        from score import score_question
+        with open('score.py', "rb") as f:
+            digest = hashlib.file_digest(f, "sha512")
+        if digest.hexdigest() == "08f8c2eb03086eebba4998569d55b227610d791f9f66ac3d7d741ce89915d88a887592a5966c2e7e429ae120cc2250de4fe1a878e6d06dc612e2eae9951a1c71":
+            from score import score_question
     except ImportError:
         st.error("Не удалось импортировать score_question из score.py")
         def score_question(top5, correct):
             return 0.0
 
-# Остальные импорты
-from llm import check_ollama, fetch_documents_for_chunks, generate_rag_answer
-from search import hybrid_search, initialize_search, semantic_search
+from llm import fetch_documents_for_chunks, generate_rag_answer
+from search import hybrid_search, semantic_search
 
-def _load_search_engine():
-    """Загрузить модели и индексы."""
-    return initialize_search()
-
-def _cached_check_ollama():
-    return check_ollama()
-
-# Функция для получения топ-5 chunk_id по запросу (используется при оценке)
 def get_top5_chunk_ids(query: str) -> list[str]:
     """Возвращает список chunk_id (топ-5) для заданного запроса."""
     mode = st.session_state.get("search_mode", "hybrid")
@@ -62,10 +72,9 @@ def get_top5_chunk_ids(query: str) -> list[str]:
         raw_results = semantic_search(query)
     else:
         raw_results = hybrid_search(query)
-    top5 = [r["chunk_id"] for r in raw_results[:5]]
-    return top5
+    return [r["chunk_id"] for r in raw_results[:5]]
 
-# 1. Настройка страницы
+# ---------------------- НАСТРОЙКА СТРАНИЦЫ ----------------------
 st.set_page_config(
     page_title="Advanced Code Search",
     page_icon=":mag:",
@@ -77,7 +86,7 @@ search_runtime = _load_search_engine()
 st.title("Поиск по коду")
 st.markdown("---")
 
-# 2. Инициализация переменных в st.session_state
+# Инициализация session_state
 if "search_results" not in st.session_state:
     st.session_state.search_results = None
 if "search_documents" not in st.session_state:
@@ -90,8 +99,10 @@ if "eval_predictions" not in st.session_state:
     st.session_state.eval_predictions = None
 if "save_triggered" not in st.session_state:
     st.session_state["save_triggered"] = False
+if "search_input" not in st.session_state:
+    st.session_state.search_input = ""
 
-# 3. БОКОВАЯ ПАНЕЛЬ НАСТРОЕК (SIDEBAR)
+# ---------------------- БОКОВАЯ ПАНЕЛЬ (только информация и фильтр) ----------------------
 with st.sidebar:
     st.header("Настройки")
     ollama_ok, ollama_err = _cached_check_ollama()
@@ -103,70 +114,69 @@ with st.sidebar:
             st.caption(f"Ошибка: {ollama_err}")
 
     st.markdown("---")
-    st.subheader("Режим поиска")
+    st.subheader("Информация о системе")
     st.caption(f"Устройство: `{search_runtime.get('device', 'Неизвестно')}`")
     st.caption(f"Модель эмбеддингов: `{search_runtime.get('embedding_model', 'Неизвестно')}`")
-    st.caption(f"Реранкер: `{'вкл' if USE_RERANKER else 'выкл'}` (USE_RERANKER)")
-    st.caption(f"GPU: `{'запрошен' if USE_GPU else 'выкл'}` (USE_GPU)")
-    
-    # ОТОБРАЖЕНИЕ LLM МОДЕЛИ ИЗ ОКРУЖЕНИЯ
-    llm_status = "вкл" if USE_OLLAMA else "выкл"
-    st.caption(f"LLM: `{llm_status}` (USE_OLLAMA)")
+    st.caption(f"Реранкер: `{'вкл' if USE_RERANKER else 'выкл'}`")
+    st.caption(f"GPU: `{'запрошен' if USE_GPU else 'выкл'}`")
+    st.caption(f"LLM: `{'вкл' if USE_OLLAMA else 'выкл'}`")
     if USE_OLLAMA:
         st.caption(f"Модель: `{LLM_MODEL_NAME}`")
 
     st.markdown("---")
-    st.subheader("Параметры поиска")
-
-    # Выбор режима поиска: semantic или hybrid
-    search_mode = st.radio(
-        "Выберите режим поиска",
-        options=["semantic", "hybrid"],
-        index=1,
-        help="semantic — только эмбеддинги; hybrid — комбинированный BM25 и эмбеддинги",
-    )
-    # Сохраняем в session_state для доступа в других частях приложения
-    st.session_state["search_mode"] = search_mode
-
-    enable_llm = st.checkbox(
-        "Включить генерацию RAG-ответа",
-        value=ollama_ok,
-        disabled=not ollama_ok,
-    )
-
+    st.subheader("Фильтр типов (мгновенный)")
     filter_type = st.multiselect(
-        "Фильтр по типу объектов из ТОП-5",
+        "Показывать только",
         options=["function", "class", "method"],
         default=["function", "class", "method"],
-        help="Уберите типы, которые не хотите видеть в текущей выдаче",
+        help="Изменение фильтра не вызывает перезапуск поиска",
     )
 
-# 4. ОСНОВНАЯ ЗОНА ИНТЕРФЕЙСА
+# ---------------------- ОСНОВНАЯ ФОРМА (поиск + параметры) ----------------------
 with st.form(key="search_form"):
     query = st.text_input(
         "Введите поисковый запрос:",
-        value=st.session_state.last_query,
+        key="search_input",
         placeholder="Например: как устроена авторизация пользователя?",
+        max_chars=200,
     )
+    
+    # Параметры, которые не должны вызывать перерисовку до отправки формы
+    col1, col2 = st.columns(2)
+    with col1:
+        search_mode = st.radio(
+            "Режим поиска",
+            options=["semantic", "hybrid"],
+            index=1,
+            help="semantic — только эмбеддинги; hybrid — BM25 + эмбеддинги"
+        )
+    with col2:
+        enable_llm = st.checkbox(
+            "Включить генерацию RAG-ответа",
+            value=ollama_ok,
+            disabled=not ollama_ok,
+        )
+    
     submitted = st.form_submit_button("Запустить поиск", type="primary", use_container_width=True)
 
-# Если форма отправлена и запрос не пустой
+# Сохраняем выбранный режим в session_state для использования в других функциях
+st.session_state["search_mode"] = search_mode
+st.session_state["enable_llm"] = enable_llm
+
+# ---------------------- ОБРАБОТКА ПОИСКА ----------------------
 if submitted and query.strip():
     q_cleaned = query.strip()
     with st.spinner("Ищем совпадения в репозитории..."):
-        mode = st.session_state.get("search_mode", "hybrid")
+        mode = st.session_state["search_mode"]
         if mode == "semantic":
             raw_results = semantic_search(q_cleaned)
         else:
             raw_results = hybrid_search(q_cleaned)
 
-        LOW_THRESHOLD = 0.0
-        filtered_results = [
-            r for r in raw_results if r.get("score", 0) >= LOW_THRESHOLD
-        ]
-
+        filtered_results = [r for r in raw_results if r.get("score", 0) >= 0.0]
         st.session_state.search_results = filtered_results
         st.session_state.last_query = q_cleaned
+        # st.session_state.search_input = q_cleaned
         st.session_state.llm_answer = None
 
     if raw_results:
@@ -175,7 +185,7 @@ if submitted and query.strip():
     else:
         st.session_state.search_documents = None
 
-# Три вкладки: результаты, LLM-пояснение, оценка
+# ---------------------- ВКЛАДКИ ----------------------
 tab_results, tab_llm, tab_eval = st.tabs(["Найденные фрагменты кода", "Пояснение от ИИ", "Оценка Precision@5"])
 
 if st.session_state.search_results:
@@ -186,33 +196,24 @@ if st.session_state.search_results:
             st.warning("В текущем ТОП-5 нет объектов выбранного типа. Измените фильтр в боковой панели.")
         else:
             st.subheader(f"Отображено фрагментов: {len(results)} из 5")
-
             for idx, hit in enumerate(results, 1):
                 with st.container(border=True):
                     col_info, col_metric = st.columns([4, 1])
-
                     with col_info:
                         st.markdown(f"### {idx}. `{hit['name']}`")
-                        st.markdown(
-                            f"**Путь к файлу:** `{hit['file_path']}` | **Тип:** `{hit['type']}`"
-                        )
-
+                        st.markdown(f"**Путь к файлу:** `{hit['file_path']}` | **Тип:** `{hit['type']}`")
                     with col_metric:
                         st.metric(label="Релевантность", value=f"{hit['score']}%")
-
                     with st.expander("Посмотреть исходный код фрагмента", expanded=(idx == 1)):
-                        code_content = st.session_state.search_documents.get(
-                            hit["chunk_id"], "# Код отсутствует"
-                        )
+                        code_content = st.session_state.search_documents.get(hit["chunk_id"], "# Код отсутствует")
                         st.code(code_content, language="python")
 
     with tab_llm:
-        if enable_llm:
+        if st.session_state.get("enable_llm", False):
             if not results:
                 st.info("Невозможно сгенерировать ответ: список фрагментов пуст из-за фильтров.")
             else:
                 st.caption(f"Модель LLM: `{LLM_MODEL_NAME}`")
-                
                 if st.session_state.llm_answer is None:
                     with st.spinner("Нейросеть анализирует контекст и пишет ответ..."):
                         st.session_state.llm_answer = generate_rag_answer(
@@ -223,46 +224,32 @@ if st.session_state.search_results:
                 st.subheader("Сгенерированный ответ архитектора")
                 st.markdown(st.session_state.llm_answer)
         else:
-            st.info("Генерация ответов отключена. Включите чекбокс в боковой панели (требуется Ollama).")
+            st.info("Генерация ответов отключена. Включите чекбокс в форме поиска (требуется Ollama).")
 
 elif st.session_state.search_results is not None:
     with tab_results:
         st.warning("Ничего не найдено по данному запросу.")
 
-# 5. ВКЛАДКА ОЦЕНКИ PRECISION@5
-
+# ---------------------- ОЦЕНКА (без изменений) ----------------------
 with tab_eval:
     st.header("Оценка точности поиска (Precision@5)")
     st.markdown("Метрика вычисляется по тестовому набору `eval_questions.json` с использованием логики `score.py` (допуск +-2 строки).")
-    
-    # Поиск eval_questions.json через find_file
     eval_file_path = find_file("eval_questions.json")
     if eval_file_path is None:
         st.error("Файл eval_questions.json не найден. Поместите его в одну из директорий проекта.")
     else:
         if st.button("Запустить оценку", type="primary"):
             with st.spinner("Загрузка вопросов и выполнение поиска..."):
-                # 1. Загружаем эталонные вопросы
                 with open(eval_file_path, encoding="utf-8") as f:
                     questions = json.load(f)
-
-                # 2. Для каждого вопроса получаем предсказания (топ-5 chunk_id)
                 predictions = []
                 progress_bar = st.progress(0)
                 for i, q in enumerate(questions):
-                    qid = q["question_id"]
-                    query_text = q["query"]
-                    top5_ids = get_top5_chunk_ids(query_text)
-                    predictions.append({
-                        "question_id": qid,
-                        "top_5_chunks": top5_ids
-                    })
+                    top5_ids = get_top5_chunk_ids(q["query"])
+                    predictions.append({"question_id": q["question_id"], "top_5_chunks": top5_ids})
                     progress_bar.progress((i + 1) / len(questions))
-
-                # Сохраняем в session_state для возможности сохранения
                 st.session_state.eval_predictions = predictions
 
-                # 3. Вычисляем Precision@5, используя функцию score_question из score.py
                 per_question = []
                 for q, pred in zip(questions, predictions):
                     correct = q.get("correct_chunk_ids", [])
@@ -274,20 +261,14 @@ with tab_eval:
                         "n_correct": len(correct),
                         "score": score,
                     })
-
-                # 4. Агрегация
                 total = len(per_question)
                 mean_score = sum(r["score"] for r in per_question) / total
                 by_difficulty = {}
-                for r in per_question:
-                    d = r["difficulty"]
-                    by_difficulty.setdefault(d, []).append(r["score"])
                 by_language = {}
                 for r in per_question:
-                    l = r["language"]
-                    by_language.setdefault(l, []).append(r["score"])
+                    by_difficulty.setdefault(r["difficulty"], []).append(r["score"])
+                    by_language.setdefault(r["language"], []).append(r["score"])
 
-                # 5. Вывод результатов
                 st.success(f"Оценка завершена. Средний Precision@5 = {mean_score:.3f}")
                 st.metric("Итоговый Score", f"{mean_score:.3f}")
 
@@ -321,11 +302,9 @@ with tab_eval:
                     })
                 st.dataframe(data, use_container_width=True)
 
-        # Кнопка сохранения results.json (появляется после оценки)
         if st.session_state.get("eval_predictions"):
             if st.button("Сохранить results.json для отчёта"):
                 st.session_state["save_triggered"] = True
-
             if st.session_state.get("save_triggered"):
                 output_path = Path("results.json")
                 with open(output_path, "w", encoding="utf-8") as f:
