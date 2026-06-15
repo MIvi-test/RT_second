@@ -265,69 +265,92 @@ with tab_eval:
     if eval_file_path is None:
         st.error("Файл eval_questions.json не найден. Поместите его в одну из директорий проекта.")
     else:
-        if st.button("Запустить оценку", type="primary"):
-            with st.spinner("Загрузка вопросов и выполнение поиска..."):
-                with open(eval_file_path, encoding="utf-8") as f:
-                    questions = json.load(f)
-                predictions = []
-                progress_bar = st.progress(0)
-                for i, q in enumerate(questions):
-                    top5_ids = get_top5_chunk_ids(q["query"])
-                    predictions.append({"question_id": q["question_id"], "top_5_chunks": top5_ids})
-                    progress_bar.progress((i + 1) / len(questions))
-                st.session_state.eval_predictions = predictions
+        # Инициализируем флаг выполнения, если его нет
+        if "eval_running" not in st.session_state:
+            st.session_state.eval_running = False
 
-                per_question = []
-                for q, pred in zip(questions, predictions):
-                    correct = q.get("correct_chunk_ids", [])
-                    score = score_question(pred["top_5_chunks"], correct)
-                    per_question.append({
-                        "question_id": q["question_id"],
-                        "difficulty": q.get("difficulty", "unknown"),
-                        "language": q.get("language", "unknown"),
-                        "n_correct": len(correct),
-                        "score": score,
-                    })
-                total = len(per_question)
-                mean_score = sum(r["score"] for r in per_question) / total
-                by_difficulty = {}
-                by_language = {}
-                for r in per_question:
-                    by_difficulty.setdefault(r["difficulty"], []).append(r["score"])
-                    by_language.setdefault(r["language"], []).append(r["score"])
+        # Кнопка запуска с проверкой блокировки
+        if st.button("Запустить оценку", type="primary", disabled=st.session_state.eval_running):
+            # Эта ветка не выполнится, если кнопка disabled, но на всякий случай проверяем
+            pass
 
-                st.success(f"Оценка завершена. Средний Precision@5 = {mean_score:.3f}")
-                st.metric("Итоговый Score", f"{mean_score:.3f}")
+        # Основная логика выполняется при нажатии кнопки (без disabled, т.к. кнопка не отключается сама)
+        # Используем отдельный обработчик с проверкой флага
+        if st.button("Запустить оценку", type="primary") and not st.session_state.eval_running:
+            st.session_state.eval_running = True
+            try:
+                with st.spinner("Загрузка вопросов и выполнение поиска..."):
+                    with open(eval_file_path, encoding="utf-8") as f:
+                        questions = json.load(f)
+                    predictions = []
+                    progress_bar = st.progress(0)
+                    for i, q in enumerate(questions):
+                        try:
+                            top5_ids = get_top5_chunk_ids(q["query"])
+                        except Exception as e:
+                            st.error(f"Ошибка поиска для вопроса {q.get('question_id')}: {e}")
+                            top5_ids = []
+                        predictions.append({"question_id": q["question_id"], "top_5_chunks": top5_ids})
+                        progress_bar.progress((i + 1) / len(questions))
+                    st.session_state.eval_predictions = predictions
 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.subheader("По сложности")
-                    for diff in ["easy", "medium", "hard"]:
-                        scores = by_difficulty.get(diff, [])
-                        if scores:
-                            avg = sum(scores)/len(scores)
-                            st.metric(diff.capitalize(), f"{avg:.3f}", f"{len(scores)} вопросов")
-                with col2:
-                    st.subheader("По языку")
-                    for lang in ["ru", "en"]:
-                        scores = by_language.get(lang, [])
-                        if scores:
-                            avg = sum(scores)/len(scores)
-                            lang_name = "Русский" if lang == "ru" else "Английский"
-                            st.metric(lang_name, f"{avg:.3f}", f"{len(scores)} вопросов")
+                    per_question = []
+                    for q, pred in zip(questions, predictions):
+                        correct = q.get("correct_chunk_ids", [])
+                        score = score_question(pred["top_5_chunks"], correct)
+                        per_question.append({
+                            "question_id": q["question_id"],
+                            "difficulty": q.get("difficulty", "unknown"),
+                            "language": q.get("language", "unknown"),
+                            "n_correct": len(correct),
+                            "score": score,
+                        })
+                    total = len(per_question)
+                    mean_score = sum(r["score"] for r in per_question) / total
+                    by_difficulty = {}
+                    by_language = {}
+                    for r in per_question:
+                        by_difficulty.setdefault(r["difficulty"], []).append(r["score"])
+                        by_language.setdefault(r["language"], []).append(r["score"])
 
-                st.subheader("Детализация по вопросам")
-                data = []
-                for r in per_question:
-                    matched = round(r["score"] * min(5, r["n_correct"]))
-                    data.append({
-                        "Вопрос": r["question_id"],
-                        "Сложность": r["difficulty"],
-                        "Язык": r["language"],
-                        "Precision@5": f"{r['score']:.2f}",
-                        "Найдено/Ожидалось": f"{matched}/{r['n_correct']}"
-                    })
-                st.dataframe(data, use_container_width=True)
+                    st.success(f"Оценка завершена. Средний Precision@5 = {mean_score:.3f}")
+                    st.metric("Итоговый Score", f"{mean_score:.3f}")
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("По сложности")
+                        for diff in ["easy", "medium", "hard"]:
+                            scores = by_difficulty.get(diff, [])
+                            if scores:
+                                avg = sum(scores)/len(scores)
+                                st.metric(diff.capitalize(), f"{avg:.3f}", f"{len(scores)} вопросов")
+                    with col2:
+                        st.subheader("По языку")
+                        for lang in ["ru", "en"]:
+                            scores = by_language.get(lang, [])
+                            if scores:
+                                avg = sum(scores)/len(scores)
+                                lang_name = "Русский" if lang == "ru" else "Английский"
+                                st.metric(lang_name, f"{avg:.3f}", f"{len(scores)} вопросов")
+
+                    st.subheader("Детализация по вопросам")
+                    data = []
+                    for r in per_question:
+                        matched = round(r["score"] * min(5, r["n_correct"]))
+                        data.append({
+                            "Вопрос": r["question_id"],
+                            "Сложность": r["difficulty"],
+                            "Язык": r["language"],
+                            "Precision@5": f"{r['score']:.2f}",
+                            "Найдено/Ожидалось": f"{matched}/{r['n_correct']}"
+                        })
+                    st.dataframe(data, use_container_width=True)
+            finally:
+                st.session_state.eval_running = False
+                # Принудительно обновляем интерфейс, чтобы кнопка разблокировалась
+                st.rerun()
+        elif st.button("Запустить оценку", type="primary") and st.session_state.eval_running:
+            st.warning("Оценка уже выполняется. Пожалуйста, дождитесь завершения.")
 
         if st.session_state.get("eval_predictions"):
             if st.button("Сохранить results.json для отчёта"):
