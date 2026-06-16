@@ -16,9 +16,9 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ${BD_PATH:-.\storage}:/storage
+      - ${BD_PATH:-./storage}:/storage
       - ${HF_HOME:-${USERPROFILE}\.cache\huggingface}:/root/.cache/huggingface
-      - ${SOURCE:-${USERPROFILE}\Downloads\dataset}:/app/dataset_case3_v1.0_fix
+      - ${SOURCE:-${USERPROFILE}/Downloads/dataset}:/app/dataset_case3_v1.0_fix
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
       - LLM_MODEL=llama3.2:3b
