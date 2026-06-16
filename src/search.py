@@ -111,7 +111,8 @@ def _load_bm25(lang: str):
             bm25_path = BM25_INDEX_JAVA
             meta_path = BM25_META_JAVA
             if not bm25_path.exists():
-                raise FileNotFoundError(f"Java BM25 index not found: {bm25_path}")
+                raise FileNotFoundError(
+                    f"Java BM25 index not found: {bm25_path}")
             with open(bm25_path, "rb") as f:
                 _bm25_java = pickle.load(f)
             with open(meta_path, "r", encoding="utf-8") as f:
@@ -120,7 +121,8 @@ def _load_bm25(lang: str):
     else:  # python
         if _bm25_python is None:
             if not BM25_INDEX.exists():
-                raise FileNotFoundError("bm25_index.pkl not found — run index.py")
+                raise FileNotFoundError(
+                    "bm25_index.pkl not found — run index.py")
             with open(BM25_INDEX, "rb") as f:
                 _bm25_python = pickle.load(f)
             with open(BM25_META, "r", encoding="utf-8") as f:
@@ -157,7 +159,8 @@ def _apply_reranker(
 ) -> List[dict]:
     """Score candidates with CrossEncoder or fall back to base scores."""
     if USE_RERANKER and _reranker is not None:
-        pairs = [[query, c["document"]] for c in candidates if c.get("document")]
+        pairs = [[query, c["document"]]
+                 for c in candidates if c.get("document")]
         if pairs:
             rerank_scores = _reranker.predict(pairs)
             idx = 0
@@ -197,7 +200,7 @@ def semantic_search(
     if use_translation:
         query = _translate_to_english(query)
 
-    fetch_k = (75 if USE_RERANKER else top_k) * 4
+    fetch_k = (25 if USE_RERANKER else top_k) * 4
     include_docs = USE_RERANKER
 
     query_vec = _model.encode([query], convert_to_numpy=True)
@@ -205,11 +208,13 @@ def semantic_search(
     hits = _collection.query(
         query_embeddings=query_vec.tolist(),
         n_results=fetch_k,
-        include=["metadatas", "distances"] + (["documents"] if include_docs else []),
+        include=["metadatas", "distances"] +
+        (["documents"] if include_docs else []),
     )
 
     candidates = []
-    documents = hits["documents"][0] if include_docs else [None] * len(hits["ids"][0])
+    documents = hits["documents"][0] if include_docs else [
+        None] * len(hits["ids"][0])
     for _id, meta, dist, doc in zip(
         hits["ids"][0], hits["metadatas"][0], hits["distances"][0], documents
     ):
@@ -260,13 +265,15 @@ def hybrid_search(
     hits = _collection.query(
         query_embeddings=query_vec.tolist(),
         n_results=fetch_k,
-        include=["metadatas", "distances"] + (["documents"] if include_docs else []),
+        include=["metadatas", "distances"] +
+        (["documents"] if include_docs else []),
     )
 
     sem_scores: Dict[str, float] = {}
     meta_by_id: Dict[str, dict] = {}
     doc_by_id: Dict[str, str] = {}
-    documents = hits["documents"][0] if include_docs else [None] * len(hits["ids"][0])
+    documents = hits["documents"][0] if include_docs else [
+        None] * len(hits["ids"][0])
     for _id, meta, dist, doc in zip(
         hits["ids"][0], hits["metadatas"][0], hits["distances"][0], documents
     ):

@@ -1,5 +1,7 @@
 """Streamlit UI: поиск по коду + опциональный LLM-ответ (RAG) + оценка Precision@5."""
 
+from search import hybrid_search, semantic_search
+from llm import fetch_documents_for_chunks, generate_rag_answer
 import sys
 import streamlit as st
 import json
@@ -83,9 +85,6 @@ else:
         def score_question(top5, correct):
             return 0.0
 
-from llm import fetch_documents_for_chunks, generate_rag_answer
-from search import hybrid_search, semantic_search
-
 
 def get_top5_chunk_ids(query: str) -> list[str]:
     """Возвращает список chunk_id (топ-5) для заданного запроса с учётом выбранного языка и перевода."""
@@ -94,9 +93,11 @@ def get_top5_chunk_ids(query: str) -> list[str]:
     use_translation = st.session_state.get("use_translation", True)
 
     if mode == "semantic":
-        raw_results = semantic_search(query, lang=lang, use_translation=use_translation)
+        raw_results = semantic_search(
+            query, lang=lang, use_translation=use_translation)
     else:
-        raw_results = hybrid_search(query, lang=lang, use_translation=use_translation)
+        raw_results = hybrid_search(
+            query, lang=lang, use_translation=use_translation)
 
     top5 = [r["chunk_id"] for r in raw_results[:5]]
     return top5
@@ -152,7 +153,8 @@ with st.sidebar:
     st.markdown("---")
     st.subheader("Информация о системе")
     st.caption(f"Устройство: `{search_runtime.get('device', 'Неизвестно')}`")
-    st.caption(f"Модель эмбеддингов: `{search_runtime.get('embedding_model', 'Неизвестно')}`")
+    st.caption(
+        f"Модель эмбеддингов: `{search_runtime.get('embedding_model', 'Неизвестно')}`")
     st.caption(f"Реранкер: `{'вкл' if USE_RERANKER else 'выкл'}`")
     st.caption(f"GPU: `{'запрошен' if USE_GPU else 'выкл'}`")
     st.caption(f"LLM: `{'вкл' if USE_OLLAMA else 'выкл'}`")
@@ -210,7 +212,8 @@ with st.form(key="search_form"):
         max_chars=200,
     )
 
-    submitted = st.form_submit_button("Запустить поиск", type="primary", use_container_width=True)
+    submitted = st.form_submit_button(
+        "Запустить поиск", type="primary", use_container_width=True)
 
 # ---------------------- ОБРАБОТКА ПОИСКА ----------------------
 if submitted and query.strip():
@@ -222,9 +225,11 @@ if submitted and query.strip():
 
         try:
             if mode == "semantic":
-                raw_results = semantic_search(q_cleaned, lang=lang, use_translation=use_translation)
+                raw_results = semantic_search(
+                    q_cleaned, lang=lang, use_translation=use_translation)
             else:
-                raw_results = hybrid_search(q_cleaned, lang=lang, use_translation=use_translation)
+                raw_results = hybrid_search(
+                    q_cleaned, lang=lang, use_translation=use_translation)
         except Exception as e:
             st.error(f"Ошибка при выполнении поиска: {e}")
             raw_results = []
@@ -239,33 +244,41 @@ if submitted and query.strip():
         if raw_results:
             try:
                 chunk_ids = [r["chunk_id"] for r in raw_results]
-                st.session_state.search_documents = fetch_documents_for_chunks(chunk_ids)
+                st.session_state.search_documents = fetch_documents_for_chunks(
+                    chunk_ids)
             except Exception as e:
                 st.error(f"Не удалось загрузить тексты фрагментов: {e}")
                 st.session_state.search_documents = {}
 
 # ---------------------- ВКЛАДКИ ----------------------
-tab_results, tab_llm, tab_eval = st.tabs(["Найденные фрагменты кода", "Пояснение от ИИ", "Оценка Precision@5"])
+tab_results, tab_llm, tab_eval = st.tabs(
+    ["Найденные фрагменты кода", "Пояснение от ИИ", "Оценка Precision@5"])
 
 if st.session_state.search_results:
-    results = [r for r in st.session_state.search_results if r["type"] in filter_type]
+    results = [
+        r for r in st.session_state.search_results if r["type"] in filter_type]
     documents = st.session_state.search_documents or {}
 
     with tab_results:
         if not results:
-            st.warning("В текущем ТОП-5 нет объектов выбранного типа. Измените фильтр в боковой панели.")
+            st.warning(
+                "В текущем ТОП-5 нет объектов выбранного типа. Измените фильтр в боковой панели.")
         else:
-            st.subheader(f"Отображено фрагментов: {len(results)} из {len(st.session_state.search_results)}")
+            st.subheader(
+                f"Отображено фрагментов: {len(results)} из {len(st.session_state.search_results)}")
             for idx, hit in enumerate(results, 1):
                 with st.container(border=True):
                     col_info, col_metric = st.columns([4, 1])
                     with col_info:
                         st.markdown(f"### {idx}. `{hit['name']}`")
-                        st.markdown(f"**Путь к файлу:** `{hit['file_path']}` | **Тип:** `{hit['type']}`")
+                        st.markdown(
+                            f"**Путь к файлу:** `{hit['file_path']}` | **Тип:** `{hit['type']}`")
                     with col_metric:
-                        st.metric(label="Релевантность", value=f"{hit['score']}%")
+                        st.metric(label="Релевантность",
+                                  value=f"{hit['score']}%")
                     with st.expander("Посмотреть исходный код фрагмента", expanded=(idx == 1)):
-                        code_content = documents.get(hit["chunk_id"], "# Код отсутствует")
+                        code_content = documents.get(
+                            hit["chunk_id"], "# Код отсутствует")
                         # Определяем язык для подсветки по расширению файла или по выбранному языку
                         file_path = hit.get("file_path", "")
                         if file_path.endswith(".py"):
@@ -273,13 +286,15 @@ if st.session_state.search_results:
                         elif file_path.endswith(".java"):
                             code_lang = "java"
                         else:
-                            code_lang = st.session_state.get("search_lang", "python")
+                            code_lang = st.session_state.get(
+                                "search_lang", "python")
                         st.code(code_content, language=code_lang)
 
     with tab_llm:
         if st.session_state.get("enable_llm", False):
             if not results:
-                st.info("Невозможно сгенерировать ответ: список фрагментов пуст из-за фильтров.")
+                st.info(
+                    "Невозможно сгенерировать ответ: список фрагментов пуст из-за фильтров.")
             else:
                 st.caption(f"Модель LLM: `{LLM_MODEL_NAME}`")
                 if st.session_state.llm_answer is None:
@@ -295,7 +310,8 @@ if st.session_state.search_results:
                 st.subheader("Сгенерированный ответ архитектора")
                 st.markdown(st.session_state.llm_answer)
         else:
-            st.info("Генерация ответов отключена. Включите чекбокс в боковой панели (требуется Ollama).")
+            st.info(
+                "Генерация ответов отключена. Включите чекбокс в боковой панели (требуется Ollama).")
 
 elif st.session_state.search_results is not None:
     with tab_results:
@@ -309,7 +325,8 @@ with tab_eval:
     )
     eval_file_path = find_file("eval_questions.json")
     if eval_file_path is None:
-        st.error("Файл eval_questions.json не найден. Поместите его в одну из директорий проекта.")
+        st.error(
+            "Файл eval_questions.json не найден. Поместите его в одну из директорий проекта.")
     else:
         if "eval_running" not in st.session_state:
             st.session_state.eval_running = False
@@ -326,9 +343,11 @@ with tab_eval:
                         try:
                             top5_ids = get_top5_chunk_ids(q["query"])
                         except Exception as e:
-                            st.error(f"Ошибка поиска для вопроса {q.get('question_id')}: {e}")
+                            st.error(
+                                f"Ошибка поиска для вопроса {q.get('question_id')}: {e}")
                             top5_ids = []
-                        predictions.append({"question_id": q["question_id"], "top_5_chunks": top5_ids})
+                        predictions.append(
+                            {"question_id": q["question_id"], "top_5_chunks": top5_ids})
                         progress_bar.progress((i + 1) / len(questions))
                     st.session_state.eval_predictions = predictions
 
@@ -350,10 +369,13 @@ with tab_eval:
                     by_difficulty = {}
                     by_language = {}
                     for r in per_question:
-                        by_difficulty.setdefault(r["difficulty"], []).append(r["score"])
-                        by_language.setdefault(r["language"], []).append(r["score"])
+                        by_difficulty.setdefault(
+                            r["difficulty"], []).append(r["score"])
+                        by_language.setdefault(
+                            r["language"], []).append(r["score"])
 
-                    st.success(f"Оценка завершена. Средний Precision@5 = {mean_score:.3f}")
+                    st.success(
+                        f"Оценка завершена. Средний Precision@5 = {mean_score:.3f}")
                     st.metric("Итоговый Score", f"{mean_score:.3f}")
 
                     col1, col2 = st.columns(2)
@@ -363,7 +385,8 @@ with tab_eval:
                             scores = by_difficulty.get(diff, [])
                             if scores:
                                 avg = sum(scores) / len(scores)
-                                st.metric(diff.capitalize(), f"{avg:.3f}", f"{len(scores)} вопросов")
+                                st.metric(
+                                    diff.capitalize(), f"{avg:.3f}", f"{len(scores)} вопросов")
                     with col2:
                         st.subheader("По языку")
                         for lang in ["ru", "en"]:
@@ -371,7 +394,8 @@ with tab_eval:
                             if scores:
                                 avg = sum(scores) / len(scores)
                                 lang_name = "Русский" if lang == "ru" else "Английский"
-                                st.metric(lang_name, f"{avg:.3f}", f"{len(scores)} вопросов")
+                                st.metric(
+                                    lang_name, f"{avg:.3f}", f"{len(scores)} вопросов")
 
                     st.subheader("Детализация по вопросам")
                     data = []
@@ -397,7 +421,8 @@ with tab_eval:
             if st.session_state.get("save_triggered"):
                 output_path = Path("results.json")
                 with open(output_path, "w", encoding="utf-8") as f:
-                    json.dump(st.session_state["eval_predictions"], f, ensure_ascii=False, indent=2)
+                    json.dump(
+                        st.session_state["eval_predictions"], f, ensure_ascii=False, indent=2)
                 st.success(f"Файл сохранён: {output_path.absolute()}")
                 st.info(
                     "Вы можете проверить его командой: `python score.py --predictions results.json --questions eval_questions.json`"
