@@ -26,12 +26,6 @@ warnings.filterwarnings("ignore", message=".*__path__.*")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
-# Indexes Python source files into ChromaDB (embeddings) and BM25 (keyword search).
-# Paths come from env vars so the same script works locally and in Docker.
-#
-#   SOURCE_PATH  – dataset root  (default: ./dataset_case3_v1.0_fix)
-#   STORAGE_DIR  – index output  (default: ./storage)
-
 
 def get_node_source(lines: list[str], node: ast.AST) -> str:
     """Return the source lines that belong to an AST node."""
@@ -46,7 +40,10 @@ def tokenize_code(text: str) -> list[str]:
 
 
 def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
-    """Parse one file and return a chunk per top-level function / class method."""
+    """
+    Parse one file and return a chunk per top-level function,
+    per class (as a whole), and per method inside classes.
+    """
     rel_path = py_file.relative_to(repo_root).as_posix()
     try:
         src = py_file.read_text(encoding="utf-8", errors="replace")
@@ -60,6 +57,7 @@ def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
     chunks = []
 
     for node in tree.body:
+        # ---- Top-level functions ----
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             chunk_id = f"{rel_path}:{node.name}:{node.lineno}"
             chunks.append(
@@ -81,25 +79,46 @@ def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
                 }
             )
 
+        # ---- Classes ----
         elif isinstance(node, ast.ClassDef):
-            # Index methods individually – avoids duplicating the whole class body
+            # 1. Index the whole class as a chunk
+            class_chunk_id = f"{rel_path}:{node.name}:{node.lineno}"
+            chunks.append(
+                {
+                    "id": class_chunk_id,
+                    "document": (
+                        f"File path: {rel_path}\n"
+                        f"Object type: {node.__class__.__name__}\n"
+                        f"Object name: {node.name}\n"
+                        f"Code:\n{get_node_source(lines, node)}"
+                    ),
+                    "metadata": {
+                        "file_path": rel_path,
+                        "name": node.name,
+                        "type": "class",
+                        "start_line": node.lineno,
+                        "end_line": getattr(node, "end_lineno", node.lineno),
+                    },
+                }
+            )
+
+            # 2. Index each method inside the class separately
             for sub_node in node.body:
                 if isinstance(sub_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                    chunk_id = (
-                        f"{rel_path}:{node.name}.{sub_node.name}:{sub_node.lineno}"
-                    )
+                    method_name = f"{node.name}.{sub_node.name}"
+                    chunk_id = f"{rel_path}:{method_name}:{sub_node.lineno}"
                     chunks.append(
                         {
                             "id": chunk_id,
                             "document": (
                                 f"File path: {rel_path}\n"
                                 f"Object type: {sub_node.__class__.__name__}\n"
-                                f"Object name: {node.name}.{sub_node.name}\n"
+                                f"Object name: {method_name}\n"
                                 f"Code:\n{get_node_source(lines, sub_node)}"
                             ),
                             "metadata": {
                                 "file_path": rel_path,
-                                "name": f"{node.name}.{sub_node.name}",
+                                "name": method_name,
                                 "type": "method",
                                 "start_line": sub_node.lineno,
                                 "end_line": getattr(
@@ -195,7 +214,7 @@ def main() -> int:
             name=COLLECTION_NAME,
             metadata={
                 "hnsw:space": "cosine",
-                "hnsw:construction_ef": 200,  # higher = better recall, slower build
+                "hnsw:construction_ef": 200,
                 "hnsw:M": 32,
             },
         )
