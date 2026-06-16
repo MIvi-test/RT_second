@@ -192,7 +192,7 @@ def semantic_search(
     query: str,
     top_k: int = 5,
     lang: str = "python",
-    use_translation: bool = True
+    use_translation: bool = False
 ) -> List[dict]:
     """Semantic search with optional CrossEncoder reranking, filtered by language."""
     _init_core()
@@ -248,7 +248,7 @@ def hybrid_search(
     semantic_weight: float = 0.5,
     bm25_weight: float = 0.5,
     lang: str = "python",
-    use_translation: bool = True
+    use_translation: bool = False
 ) -> List[dict]:
     """Combine semantic and BM25 scores, optionally rerank with CrossEncoder."""
     _init_core()
