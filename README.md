@@ -52,22 +52,69 @@ cd RT_second
 ---
 ## Быстрый запуск
 
+Перед запуском необходимо настроить пути для директорий исходного кода, кешa HuggingFace и хранения базы данных ChromaDB (SOURCE, HF_HOME и BD_PATH в соответсвенно в разделе volumes файлов docker-compose).
+
+| Переменная | По умолчанию                         | Описание                                |
+| ---------- | ------------------------------------ | --------------------------------------- |
+| `BD_PATH`  | `.\storage`                          | Каталог с индексами (ChromaDB, BM25)    |
+| `HF_HOME`  | `${USERPROFILE}\.cache\huggingface}` | Путь для сохранения моделей HuggingFace |
+| `SOURCE`   | `${USERPROFILE}\Downloads\dataset}`  | Путь к исходному коду для индексации    |
+
+`HF_HOME` также используется для глобального обращения к моделям, которые **уже** установлены в системе.
+
+Более детально информация о значении переменных и их настройке находится в [разделе "Переменные окружения"](#variables).
+
+---
+### Linux
+
+``` bash
+# пример настройки
+export SOURCE_PATH=/app/dataset_case3_v1.0_fix
+```
+
 **CPU** (по умолчанию):
 
 ```bash
 docker compose \  
 -f docker-compose.yml \  
-up --build
+up
 ```
 
 **С поддержкой GPU** (нужен **nvidia-container-toolkit**):
 
 ```bash
 docker compose \  
--f docker-compose.gpu.yml \  
-up --build
+-f docker-compose.gpu.linux.yml \  
+up
 ```
 
+---
+### Windows
+
+``` PowerShell
+# пример настройки
+$env:SOURCE="/app/dataset_case3_v1.0_fix"
+```
+
+> Для запуска docker-compose с поддержкой LLM в ОС Windows обязательно должен быть запущен docker desktop
+
+**CPU** (по умолчанию):
+
+```bash
+docker compose \  
+-f docker-compose.yml \  
+up
+```
+
+**С поддержкой GPU**:
+
+```bash
+docker compose \  
+-f docker-compose.gpu.win.yml \  
+up
+```
+
+---
 После старта: http://localhost:8501
 Для завершения работы выполняются аналогичные команды, но вместо `up --build` используется `down`:
 
@@ -80,7 +127,7 @@ docker compose down
 
 ### 1. Установка uv
 
-**Linux / macOS:**
+**Linux:**
 
 ```bash
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -136,7 +183,7 @@ uv run streamlit run app.py
 
 | Переменная     | По умолчанию                       | Описание                                        |
 | -------------- | ---------------------------------- | ----------------------------------------------- |
-| `SOURCE_PATH`  | `./dataset_case3_v1.0_fix/gymhero` | Путь к Python-коду для индексации               |
+| `SOURCE_PATH`  | `./dataset_case3_v1.0_fix/gymhero` | Путь к исходному коду для индексации            |
 | `STORAGE_DIR`  | `./storage`                        | Каталог с индексами (ChromaDB, BM25)            |
 | `USE_RERANKER` | `true`                             | Включить CrossEncoder `BAAI/bge-reranker-v2-m3` |
 | `USE_GPU`      | `false`                            | Использовать CUDA для эмбеддингов и реранкера   |
@@ -219,10 +266,10 @@ $env:LLM_MODEL="qwen3.5:9b"
 
 Проект полностью контейнеризирован. Доступно два профиля:
 
-| Профиль | Файл | Требования |
-|---|---|---|
-| CPU | `docker-compose.yml` | Docker |
-| GPU | `docker-compose.yml` + `docker-compose.gpu.yml` | Docker + nvidia-container-toolkit |
+| Профиль | Файл                                                           | Требования                        |
+| ------- | -------------------------------------------------------------- | --------------------------------- |
+| CPU     | `docker-compose.yml`                                           | Docker                            |
+| GPU     | `docker-compose.gpu.win.yml` или`docker-compose.gpu.linux.yml` | Docker + nvidia-container-toolkit |
 
 `entrypoint.sh` запускает `index.py` и `streamlit` последовательно внутри контейнера. Веса HuggingFace кэшируются в volume `hf_cache` (`~/.cache/huggingface`) — повторный старт контейнера не перескачивает модели.
 
