@@ -16,7 +16,7 @@ services:
     ports:
       - "11434:11434"
     volumes:
-      - ~/.ollama:/root/.ollama
+      - ${OLLAMA_HOME:-~/.ollama}:/root/.ollama
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_ORIGINS=*
@@ -40,9 +40,9 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./storage:/storage
-      - hf_cache:/root/.cache/huggingface
-      - ./dataset_case3_v1.0_fix:/app/dataset_case3_v1.0_fix
+      - ${STORAGE:-./storage}:/storage
+      - ${HF_HOME:-hf_cache}:/root/.cache/huggingface
+      - ${SOURCE:-./dataset_case3_v1.0_fix}:/app/dataset_case3_v1.0_fix
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=llama3.2:3b

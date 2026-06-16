@@ -9,7 +9,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - C:\Users\mrtip\Downloads\dataset:/app/dataset_case3_v1.0_fix
+      - ${SOURCE:-./dataset_case3_v1.0_fix}:/app/dataset_case3_v1.0_fix
     environment:
       - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
