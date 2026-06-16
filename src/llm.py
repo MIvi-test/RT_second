@@ -67,6 +67,13 @@ def fetch_documents_for_chunks(chunk_ids: List[str]) -> Dict[str, str]:
     return {cid: doc for cid, doc in zip(data["ids"], data["documents"])}
 
 
+def _sanitize_text(text: str) -> str:
+    """Remove HTML tags from untrusted text without mangling code comparisons."""
+    if BLEACH_AVAILABLE:
+        return bleach.clean(text, tags=[], strip=True)
+    return re.sub(r"<[^>]+>", "", text)
+
+
 def _detect_lang(text: str) -> str:
     """Return 'ru' if text contains Cyrillic characters, else 'en'."""
     return "ru" if re.search(r"[а-яА-ЯёЁ]", text) else "en"
@@ -151,23 +158,16 @@ def generate_rag_answer(
         chunk_ids = [r["chunk_id"] for r in results]
         documents = fetch_documents_for_chunks(chunk_ids)
 
-    prompt = _build_prompt(question, results, documents)
-    # Sanitize prompt before sending (remove dangerous HTML tags if bleach available)
-    if BLEACH_AVAILABLE:
-        safe_prompt = bleach.clean(prompt, tags=[], attributes={}, styles=[], strip=True)
-    else:
-        # basic fallback: strip HTML-like tags
-        safe_prompt = re.sub(r"<[^>]+>", "", prompt)
+    prompt = _build_prompt(_sanitize_text(question), results, documents)
 
-    response = ollama.chat(
-        model=model,
-        messages=[{"role": "user", "content": safe_prompt}],
-    )
+    try:
+        response = ollama.chat(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except Exception as exc:
+        logger.exception("Ollama chat failed")
+        return f"Не удалось получить ответ от LLM: {exc}"
 
     content = response.message.content.strip()
-    if BLEACH_AVAILABLE:
-        content = bleach.clean(content, tags=[], attributes={}, styles=[], strip=True)
-    else:
-        content = re.sub(r"<[^>]+>", "", content)
-
-    return content
+    return _sanitize_text(content)

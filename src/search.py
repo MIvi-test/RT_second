@@ -66,14 +66,13 @@ def tokenize_code(text: str) -> List[str]:
     return text.lower().split()
 
 
-def _get_lang_filter(lang: str) -> Optional[dict]:
-    """Return Chroma where filter for given language based on file extension."""
+def _matches_lang(file_path: str, lang: str) -> bool:
+    """Filter chunks by file extension (Chroma $contains is unreliable for paths)."""
     if lang == "java":
-        return {"file_path": {"$contains": ".java"}}
-    elif lang == "python":
-        return {"file_path": {"$contains": ".py"}}
-    else:
-        return None
+        return file_path.endswith(".java")
+    if lang == "python":
+        return file_path.endswith(".py")
+    return True
 
 
 def _init_core() -> None:
@@ -198,16 +197,14 @@ def semantic_search(
     if use_translation:
         query = _translate_to_english(query)
 
-    fetch_k = 75 if USE_RERANKER else top_k
+    fetch_k = (75 if USE_RERANKER else top_k) * 4
     include_docs = USE_RERANKER
 
     query_vec = _model.encode([query], convert_to_numpy=True)
 
-    where_filter = _get_lang_filter(lang)
     hits = _collection.query(
         query_embeddings=query_vec.tolist(),
         n_results=fetch_k,
-        where=where_filter,
         include=["metadatas", "distances"] + (["documents"] if include_docs else []),
     )
 
@@ -216,9 +213,12 @@ def semantic_search(
     for _id, meta, dist, doc in zip(
         hits["ids"][0], hits["metadatas"][0], hits["distances"][0], documents
     ):
+        file_path = meta.get("file_path", "?")
+        if not _matches_lang(file_path, lang):
+            continue
         item = {
             "chunk_id": _id,
-            "file_path": meta.get("file_path", "?"),
+            "file_path": file_path,
             "type": meta.get("type", "?"),
             "name": meta.get("name", "?"),
             "semantic_score": 1 - dist,
@@ -252,22 +252,16 @@ def hybrid_search(
     if use_translation:
         query = _translate_to_english(query)
 
-    fetch_k = top_k * 3
+    fetch_k = top_k * 12
     include_docs = USE_RERANKER
 
     query_vec = _model.encode([query], convert_to_numpy=True)
 
-    where_filter = _get_lang_filter(lang)
-    try:
-        hits = _collection.query(
-            query_embeddings=query_vec.tolist(),
-            n_results=fetch_k,
-            where=where_filter,
-            include=["metadatas", "distances"] + (["documents"] if include_docs else []),
-        )
-    except Exception as e:
-        logger.error("Chroma query failed: %s", e)
-        return []
+    hits = _collection.query(
+        query_embeddings=query_vec.tolist(),
+        n_results=fetch_k,
+        include=["metadatas", "distances"] + (["documents"] if include_docs else []),
+    )
 
     sem_scores: Dict[str, float] = {}
     meta_by_id: Dict[str, dict] = {}
@@ -276,6 +270,9 @@ def hybrid_search(
     for _id, meta, dist, doc in zip(
         hits["ids"][0], hits["metadatas"][0], hits["distances"][0], documents
     ):
+        file_path = meta.get("file_path", "?")
+        if not _matches_lang(file_path, lang):
+            continue
         cid = _id
         sem_scores[cid] = 1 - dist
         meta_by_id[cid] = meta
@@ -296,6 +293,8 @@ def hybrid_search(
             if norm[idx] > 0:
                 bm25_meta_item = bm25_meta[idx]
                 rel_path = bm25_meta_item.get("file_path", "?")
+                if not _matches_lang(rel_path, lang):
+                    continue
                 name = bm25_meta_item.get("name", "?")
                 start_line = bm25_meta_item.get("start_line", "0")
                 cid = f"{rel_path}:{name}:{start_line}"

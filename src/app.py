@@ -32,7 +32,7 @@ def _load_search_engine():
     return initialize_search()
 
 
-@st.cache_resource
+@st.cache_data(ttl=60)
 def _cached_check_ollama():
     from llm import check_ollama
 
@@ -160,6 +160,39 @@ with st.sidebar:
         st.caption(f"Модель: `{LLM_MODEL_NAME}`")
 
     st.markdown("---")
+    st.subheader("Параметры поиска")
+
+    lang_choice = st.selectbox(
+        "Язык кода:",
+        options=["Python", "Java"],
+        index=0 if st.session_state.search_lang == "python" else 1,
+        help="Выберите язык, по которому будет выполняться поиск (BM25 и фильтрация коллекции).",
+    )
+    st.session_state["search_lang"] = "python" if lang_choice == "Python" else "java"
+
+    search_mode = st.radio(
+        "Режим поиска",
+        options=["semantic", "hybrid"],
+        index=1 if st.session_state.search_mode == "hybrid" else 0,
+        help="semantic — только эмбеддинги; hybrid — BM25 + эмбеддинги",
+    )
+    st.session_state["search_mode"] = search_mode
+
+    use_translation = st.checkbox(
+        "Переводить запросы на английский",
+        value=st.session_state.use_translation,
+        help="Если включено, русские запросы будут переводиться перед поиском",
+    )
+    st.session_state["use_translation"] = use_translation
+
+    enable_llm = st.checkbox(
+        "Включить генерацию RAG-ответа",
+        value=st.session_state.enable_llm or ollama_ok,
+        disabled=not ollama_ok,
+    )
+    st.session_state["enable_llm"] = enable_llm
+
+    st.markdown("---")
     st.subheader("Фильтр типов (мгновенный)")
     filter_type = st.multiselect(
         "Показывать только",
@@ -172,46 +205,12 @@ with st.sidebar:
 with st.form(key="search_form"):
     query = st.text_input(
         "Введите поисковый запрос:",
-        key="search_input",
+        value=st.session_state.last_query,
         placeholder="Например: как устроена авторизация пользователя?",
         max_chars=200,
     )
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        lang_choice = st.selectbox(
-            "Язык кода:",
-            options=["Python", "Java"],
-            index=0,
-            help="Выберите язык, по которому будет выполняться поиск (BM25 и фильтрация коллекции).",
-        )
-    with col2:
-        search_mode = st.radio(
-            "Режим поиска",
-            options=["semantic", "hybrid"],
-            index=1,
-            help="semantic — только эмбеддинги; hybrid — BM25 + эмбеддинги",
-        )
-    with col3:
-        enable_llm = st.checkbox(
-            "Включить генерацию RAG-ответа",
-            value=ollama_ok,
-            disabled=not ollama_ok,
-        )
-
-    use_translation = st.checkbox(
-        "Переводить запросы на английский",
-        value=True,
-        help="Если включено, русские запросы будут переводиться перед поиском",
-    )
-
     submitted = st.form_submit_button("Запустить поиск", type="primary", use_container_width=True)
-
-# Сохраняем выбранные параметры в session_state
-st.session_state["search_mode"] = search_mode
-st.session_state["enable_llm"] = enable_llm
-st.session_state["search_lang"] = "python" if lang_choice == "Python" else "java"
-st.session_state["use_translation"] = use_translation
 
 # ---------------------- ОБРАБОТКА ПОИСКА ----------------------
 if submitted and query.strip():
@@ -235,18 +234,22 @@ if submitted and query.strip():
         st.session_state.search_results = filtered_results
         st.session_state.last_query = q_cleaned
         st.session_state.llm_answer = None
+        st.session_state.search_documents = {}
 
-    if raw_results:
-        chunk_ids = [r["chunk_id"] for r in raw_results]
-        st.session_state.search_documents = fetch_documents_for_chunks(chunk_ids)
-    else:
-        st.session_state.search_documents = None
+        if raw_results:
+            try:
+                chunk_ids = [r["chunk_id"] for r in raw_results]
+                st.session_state.search_documents = fetch_documents_for_chunks(chunk_ids)
+            except Exception as e:
+                st.error(f"Не удалось загрузить тексты фрагментов: {e}")
+                st.session_state.search_documents = {}
 
 # ---------------------- ВКЛАДКИ ----------------------
 tab_results, tab_llm, tab_eval = st.tabs(["Найденные фрагменты кода", "Пояснение от ИИ", "Оценка Precision@5"])
 
 if st.session_state.search_results:
     results = [r for r in st.session_state.search_results if r["type"] in filter_type]
+    documents = st.session_state.search_documents or {}
 
     with tab_results:
         if not results:
@@ -262,7 +265,7 @@ if st.session_state.search_results:
                     with col_metric:
                         st.metric(label="Релевантность", value=f"{hit['score']}%")
                     with st.expander("Посмотреть исходный код фрагмента", expanded=(idx == 1)):
-                        code_content = st.session_state.search_documents.get(hit["chunk_id"], "# Код отсутствует")
+                        code_content = documents.get(hit["chunk_id"], "# Код отсутствует")
                         # Определяем язык для подсветки по расширению файла или по выбранному языку
                         file_path = hit.get("file_path", "")
                         if file_path.endswith(".py"):
@@ -281,15 +284,18 @@ if st.session_state.search_results:
                 st.caption(f"Модель LLM: `{LLM_MODEL_NAME}`")
                 if st.session_state.llm_answer is None:
                     with st.spinner("Нейросеть анализирует контекст и пишет ответ..."):
-                        st.session_state.llm_answer = generate_rag_answer(
-                            st.session_state.last_query,
-                            results,
-                            st.session_state.search_documents,
-                        )
+                        try:
+                            st.session_state.llm_answer = generate_rag_answer(
+                                st.session_state.last_query,
+                                results,
+                                documents,
+                            )
+                        except Exception as e:
+                            st.session_state.llm_answer = f"Ошибка генерации ответа: {e}"
                 st.subheader("Сгенерированный ответ архитектора")
                 st.markdown(st.session_state.llm_answer)
         else:
-            st.info("Генерация ответов отключена. Включите чекбокс в форме поиска (требуется Ollama).")
+            st.info("Генерация ответов отключена. Включите чекбокс в боковой панели (требуется Ollama).")
 
 elif st.session_state.search_results is not None:
     with tab_results:
