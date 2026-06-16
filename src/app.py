@@ -213,7 +213,7 @@ with st.form(key="search_form"):
     )
 
     submitted = st.form_submit_button(
-        "Запустить поиск", type="primary", use_container_width=True)
+        "Запустить поиск", type="primary", width="stretch")
 
 # ---------------------- ОБРАБОТКА ПОИСКА ----------------------
 if submitted and query.strip():
@@ -410,10 +410,9 @@ with tab_eval:
                                 "Найдено/Ожидалось": f"{matched}/{r['n_correct']}",
                             }
                         )
-                    st.dataframe(data, use_container_width=True)
+                    st.dataframe(data, width="stretch")
             finally:
                 st.session_state.eval_running = False
-                st.rerun()
 
         if st.session_state.get("eval_predictions"):
             if st.button("Сохранить results.json для отчёта"):
