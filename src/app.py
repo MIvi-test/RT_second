@@ -90,7 +90,7 @@ def get_top5_chunk_ids(query: str) -> list[str]:
     """Возвращает список chunk_id (топ-5) для заданного запроса с учётом выбранного языка и перевода."""
     mode = st.session_state.get("search_mode", "hybrid")
     lang = st.session_state.get("search_lang", "python")
-    use_translation = st.session_state.get("use_translation", True)
+    use_translation = st.session_state.get("use_translation", False)
 
     if mode == "semantic":
         raw_results = semantic_search(
@@ -135,7 +135,7 @@ if "search_lang" not in st.session_state:
 if "search_mode" not in st.session_state:
     st.session_state.search_mode = "hybrid"
 if "use_translation" not in st.session_state:
-    st.session_state.use_translation = True
+    st.session_state.use_translation = False
 if "enable_llm" not in st.session_state:
     st.session_state.enable_llm = False
 
