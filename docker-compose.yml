@@ -9,6 +9,8 @@ services:
     ports:
       - "8501:8501"
     volumes:
+      - ${STORAGE:-./storage}:/storage
+      - ${HF_HOME:-hf_cache}:/root/.cache/huggingface
       - ${SOURCE:-./dataset_case3_v1.0_fix}:/app/dataset_case3_v1.0_fix
     environment:
       - PYTHONUNBUFFERED=1
