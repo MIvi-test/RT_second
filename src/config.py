@@ -14,7 +14,7 @@ BM25_INDEX_JAVA = STORAGE_DIR / "bm25_index_java.pkl"
 BM25_META_JAVA = STORAGE_DIR / "bm25_meta_java.json"
 DEFAULT_PREDICTIONS = SOURCE_PATH / "results.json"
 DEFAULT_QUESTIONS = SOURCE_PATH / "eval_questions.json"
-SCORE_SCRIPT = STORAGE_DIR / "score.py"
+SCORE_SCRIPT = SOURCE_PATH / "score.py"
 # EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 

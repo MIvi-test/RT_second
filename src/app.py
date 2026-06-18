@@ -14,6 +14,8 @@ from config import (
     USE_GPU,
     USE_RERANKER,
     USE_OLLAMA,
+    DEFAULT_QUESTIONS,
+    SCORE_SCRIPT,
 )
 
 try:
@@ -49,36 +51,18 @@ __all__ = [
     "_cached_check_ollama",
 ]
 
-
-def find_file(filename: str) -> Path | None:
-    """Ищет файл в корневой директории и всех поддиректориях."""
-    root = Path(__file__).resolve().parent.parent
-    direct_path = root / filename
-    if direct_path.is_file():
-        return direct_path
-    for path in root.rglob(filename):
-        if path.is_file():
-            return path
-    return None
-
-
 # Подключение score.py
-score_path = find_file("score.py")
-if score_path is None:
+if SCORE_SCRIPT is None:
     st.error("Файл score.py не найден. Оценка Precision@5 недоступна.")
 
     def score_question(top5, correct):
         return 0.0
 else:
-    score_dir = score_path.parent
+    score_dir = SCORE_SCRIPT.parent
     if str(score_dir) not in sys.path:
         sys.path.insert(0, str(score_dir))
     try:
-        with open(score_path, "rb") as f:
-            digest = hashlib.file_digest(f, "sha512")
-        # Хеш-сумма для проверки целостности (опционально)
-        if digest.hexdigest() == "08f8c2eb03086eebba4998569d55b227610d791f9f66ac3d7d741ce89915d88a887592a5966c2e7e429ae120cc2250de4fe1a878e6d06dc612e2eae9951a1c71":
-            from score import score_question
+        from score import score_question
     except ImportError:
         st.error("Не удалось импортировать score_question из score.py")
 
@@ -323,8 +307,7 @@ with tab_eval:
     st.markdown(
         "Метрика вычисляется по тестовому набору `eval_questions.json` с использованием логики `score.py` (допуск +-2 строки)."
     )
-    eval_file_path = find_file("eval_questions.json")
-    if eval_file_path is None:
+    if DEFAULT_QUESTIONS is None:
         st.error(
             "Файл eval_questions.json не найден. Поместите его в одну из директорий проекта.")
     else:
@@ -335,7 +318,7 @@ with tab_eval:
             st.session_state.eval_running = True
             try:
                 with st.spinner("Загрузка вопросов и выполнение поиска..."):
-                    with open(eval_file_path, encoding="utf-8") as f:
+                    with open(DEFAULT_QUESTIONS, encoding="utf-8") as f:
                         questions = json.load(f)
                     predictions = []
                     progress_bar = st.progress(0)
