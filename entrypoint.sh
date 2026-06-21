@@ -37,20 +37,30 @@ if [ "${USE_OLLAMA:-false}" != "false" ]; then
     fi
 fi
 
-# 3. Index code (if not already indexed)
+# 3. Index Python code (if not already indexed)
+mkdir -p "${STORAGE_DIR}"
+export SOURCE_PATH="${SOURCE_PATH}"
+export STORAGE_DIR="${STORAGE_DIR}"
+
 if [ -f "${STORAGE_DIR}/bm25_index.pkl" ]; then
-    echo "[3] Indexes already exist, skipping indexing."
+    echo "[3] Python index already exists, skipping."
 else
-    echo "[3] Building indexes..."
-    mkdir -p "${STORAGE_DIR}"
-    export SOURCE_PATH="${SOURCE_PATH}"
-    export STORAGE_DIR="${STORAGE_DIR}"
+    echo "[3] Building Python index..."
     python src/index.py
-    echo "[3] Indexing complete."
+    echo "[3] Python indexing complete."
 fi
 
-# 4. Start Streamlit UI
-echo "[4] Starting Streamlit UI on port 8501..."
+# 4. Index Java code (if not already indexed)
+if [ -f "${STORAGE_DIR}/bm25_index_java.pkl" ]; then
+    echo "[4] Java index already exists, skipping."
+else
+    echo "[4] Building Java index..."
+    python src/index_java.py
+    echo "[4] Java indexing complete."
+fi
+
+# 5. Start Streamlit UI
+echo "[5] Starting Streamlit UI on port 8501..."
 exec streamlit run src/app.py \
     --server.port=8501 \
     --server.address=0.0.0.0 \

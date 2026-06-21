@@ -8,7 +8,6 @@ import warnings
 from pathlib import Path
 
 import chromadb
-import javalang
 from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
@@ -29,153 +28,169 @@ warnings.filterwarnings("ignore", message=".*__path__.*")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
+# ---------------------------------------------------------------------------
+# tree-sitter setup (requires tree-sitter>=0.25, tree-sitter-java)
+# ---------------------------------------------------------------------------
+import tree_sitter_java as tsjava
+from tree_sitter import Language, Parser
+
+JAVA_LANGUAGE = Language(tsjava.language())
+_parser = Parser(JAVA_LANGUAGE)
+
+
+# Типы узлов, которые считаются «типами» (класс / интерфейс / enum)
+_TYPE_NODE_KINDS = {
+    "class_declaration",
+    "interface_declaration",
+    "enum_declaration",
+    "annotation_type_declaration",
+    "record_declaration",  # Java 16+
+}
+
+# Типы узлов, которые считаются «членами» (методы / конструкторы)
+_MEMBER_NODE_KINDS = {
+    "method_declaration",
+    "constructor_declaration",
+}
+
+# Поле, в котором tree-sitter хранит имя узла
+_NAME_FIELD = "name"
+
+
+def _node_text(node, src_bytes: bytes) -> str:
+    """Возвращает исходный текст узла."""
+    return src_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+
+
+def _node_name(node, src_bytes: bytes) -> str:
+    """Возвращает имя узла (поле 'name'), либо пустую строку."""
+    name_node = node.child_by_field_name(_NAME_FIELD)
+    if name_node is None:
+        return ""
+    return src_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace")
+
+
+def _obj_type_label(kind: str) -> str:
+    """Человекочитаемый тип объекта для поля 'Object type'."""
+    return {
+        "class_declaration": "ClassDeclaration",
+        "interface_declaration": "InterfaceDeclaration",
+        "enum_declaration": "EnumDeclaration",
+        "annotation_type_declaration": "AnnotationDeclaration",
+        "record_declaration": "RecordDeclaration",
+        "method_declaration": "method",
+        "constructor_declaration": "constructor",
+    }.get(kind, kind)
+
+
+def _walk_type_node(
+    node,
+    src_bytes: bytes,
+    rel_path: str,
+    outer_name: str,
+    chunks: list,
+) -> None:
+    """
+    Рекурсивно обходит узел типа (class/interface/enum/record) и добавляет чанки:
+      1. Сам тип целиком — аналог ClassDef-чанка в index.py
+      2. Каждый метод / конструктор внутри — аналог method-чанка в index.py
+      3. Вложенные типы — рекурсия
+    """
+    type_name = _node_name(node, src_bytes)
+    full_type_name = f"{outer_name}.{type_name}" if outer_name else type_name
+
+    # 1. Чанк для самого типа целиком
+    start_line = node.start_point[0] + 1  # tree-sitter: 0-based → 1-based
+    end_line = node.end_point[0] + 1
+    type_code = _node_text(node, src_bytes)
+
+    chunks.append({
+        "id": f"{rel_path}:{full_type_name}:{start_line}",
+        "document": (
+            f"File path: {rel_path}\n"
+            f"Object type: {_obj_type_label(node.type)}\n"
+            f"Object name: {full_type_name}\n"
+            f"Code:\n{type_code}"
+        ),
+        "metadata": {
+            "file_path": rel_path,
+            "name": full_type_name,
+            "type": "class",
+            "start_line": start_line,
+            "end_line": end_line,
+        },
+    })
+
+    # 2. Проходим по телу типа
+    # tree-sitter хранит тело класса в узле class_body / interface_body / enum_body
+    body_node = node.child_by_field_name("body")
+    if body_node is None:
+        return
+
+    for child in body_node.children:
+        if child.type in _MEMBER_NODE_KINDS:
+            # --- Метод или конструктор ---
+            member_name = _node_name(child, src_bytes)
+            # Для конструктора имя совпадает с именем класса — как в старой версии
+            full_member_name = f"{full_type_name}.{member_name}"
+            m_start = child.start_point[0] + 1
+            m_end = child.end_point[0] + 1
+            member_code = _node_text(child, src_bytes)
+
+            chunks.append({
+                "id": f"{rel_path}:{full_member_name}:{m_start}",
+                "document": (
+                    f"File path: {rel_path}\n"
+                    f"Object type: {_obj_type_label(child.type)}\n"
+                    f"Object name: {full_member_name}\n"
+                    f"Code:\n{member_code}"
+                ),
+                "metadata": {
+                    "file_path": rel_path,
+                    "name": full_member_name,
+                    "type": "method" if child.type == "method_declaration" else "constructor",
+                    "start_line": m_start,
+                    "end_line": m_end,
+                },
+            })
+
+        elif child.type in _TYPE_NODE_KINDS:
+            # --- Вложенный тип — рекурсия ---
+            _walk_type_node(child, src_bytes, rel_path, full_type_name, chunks)
+
+
+def extract_chunks_from_java_file(java_file: Path, repo_root: Path) -> list[dict]:
+    """
+    Парсит один .java файл через tree-sitter и возвращает список чанков.
+    Структура чанков идентична index.py:
+      - тип целиком (class / interface / enum / record)
+      - каждый метод и конструктор
+    """
+    rel_path = java_file.relative_to(repo_root).as_posix()
+    try:
+        src = java_file.read_text(encoding="utf-8", errors="replace")
+        src_bytes = src.encode("utf-8", errors="replace")
+        tree = _parser.parse(src_bytes)
+    except Exception:
+        print(f"[WARN] Could not parse {java_file}")
+        traceback.print_exc()
+        return []
+
+    chunks: list[dict] = []
+
+    # Корень дерева — compilation_unit; ищем верхнеуровневые типы
+    for child in tree.root_node.children:
+        if child.type in _TYPE_NODE_KINDS:
+            _walk_type_node(child, src_bytes, rel_path, "", chunks)
+
+    return chunks
+
 
 def tokenize_code(text: str) -> list[str]:
     """Нормализация текста для BM25 (разбивка camelCase, удаление пунктуации)."""
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
     text = re.sub(r"[^a-zA-Z0-9]", " ", text)
     return text.lower().split()
-
-
-def extract_method_source(lines: list[str], start_line: int) -> str:
-    """
-    Извлекает исходный код метода/конструктора, начиная со start_line.
-    Ищет баланс фигурных скобок, чтобы определить конец тела метода.
-    """
-    if start_line < 1 or start_line > len(lines):
-        return ""
-
-    # Ищем строку, содержащую открывающую фигурную скобку
-    brace_start_line = None
-    for i in range(start_line - 1, len(lines)):
-        if "{" in lines[i]:
-            brace_start_line = i
-            break
-    if brace_start_line is None:
-        return ""
-
-    balance = 0
-    end_line = None
-    for i in range(brace_start_line, len(lines)):
-        line = lines[i]
-        balance += line.count("{") - line.count("}")
-        if balance == 0:
-            end_line = i
-            break
-
-    if end_line is None:
-        end_line = len(lines) - 1
-
-    return "\n".join(lines[start_line - 1 : end_line + 1])
-
-
-def process_type_node(
-    type_node,
-    rel_path: str,
-    lines: list[str],
-    outer_name: str,
-    chunks: list,
-):
-    """
-    Рекурсивно обходит классы/интерфейсы/enum и добавляет чанки для методов и конструкторов.
-    """
-    # Полное имя типа
-    if outer_name:
-        full_type_name = f"{outer_name}.{type_node.name}"
-    else:
-        full_type_name = type_node.name
-
-    for member in type_node.body:
-        if isinstance(member, javalang.tree.MethodDeclaration):
-            start_line = member.position.line
-            code = extract_method_source(lines, start_line)
-            if not code:
-                continue
-
-            method_name = member.name
-            full_name = f"{full_type_name}.{method_name}"
-            chunk_id = f"{rel_path}:{full_name}:{start_line}"
-
-            doc_text = (
-                f"File path: {rel_path}\n"
-                f"Object type: method\n"
-                f"Object name: {full_name}\n"
-                f"Code:\n{code}"
-            )
-
-            chunks.append({
-                "id": chunk_id,
-                "document": doc_text,
-                "metadata": {
-                    "file_path": rel_path,
-                    "name": full_name,
-                    "type": "method",
-                    "start_line": start_line,
-                    "end_line": start_line + code.count('\n'),
-                },
-            })
-
-        elif isinstance(member, javalang.tree.ConstructorDeclaration):
-            start_line = member.position.line
-            code = extract_method_source(lines, start_line)
-            if not code:
-                continue
-
-            # Имя конструктора — имя класса
-            constructor_name = full_type_name.split('.')[-1]
-            full_name = f"{full_type_name}.{constructor_name}"
-            chunk_id = f"{rel_path}:{full_name}:{start_line}"
-
-            doc_text = (
-                f"File path: {rel_path}\n"
-                f"Object type: constructor\n"
-                f"Object name: {full_name}\n"
-                f"Code:\n{code}"
-            )
-
-            chunks.append({
-                "id": chunk_id,
-                "document": doc_text,
-                "metadata": {
-                    "file_path": rel_path,
-                    "name": full_name,
-                    "type": "constructor",
-                    "start_line": start_line,
-                    "end_line": start_line + code.count('\n'),
-                },
-            })
-
-        # Вложенные типы
-        elif isinstance(member, (javalang.tree.ClassDeclaration,
-                                 javalang.tree.InterfaceDeclaration,
-                                 javalang.tree.EnumDeclaration)):
-            process_type_node(member, rel_path, lines, full_type_name, chunks)
-
-
-def extract_chunks_from_java_file(java_file: Path, repo_root: Path) -> list[dict]:
-    """
-    Парсит один .java файл и возвращает список чанков (методы и конструкторы).
-    """
-    rel_path = java_file.relative_to(repo_root).as_posix()
-    try:
-        src = java_file.read_text(encoding="utf-8", errors="replace")
-        lines = src.splitlines()
-        tree = javalang.parse.parse(src)
-    except Exception:
-        print(f"[WARN] Could not parse {java_file}")
-        traceback.print_exc()
-        return []
-
-    chunks = []
-
-    # Обрабатываем все верхнеуровневые типы
-    for path_node in tree.types:
-        if isinstance(path_node, (javalang.tree.ClassDeclaration,
-                                  javalang.tree.InterfaceDeclaration,
-                                  javalang.tree.EnumDeclaration)):
-            process_type_node(path_node, rel_path, lines, "", chunks)
-
-    return chunks
 
 
 def main() -> int:
@@ -190,7 +205,7 @@ def main() -> int:
 
     # --- 1. Сбор всех .java файлов и извлечение чанков ---
     java_files = list(REPO_ROOT.rglob("*.java"))
-    all_chunks = []
+    all_chunks: list[dict] = []
     print(f"[index_java] Scanning {len(java_files)} Java files …")
 
     for java_file in java_files:
