@@ -18,13 +18,13 @@ SCORE_SCRIPT = os.environ.get("SCORE_PATH", SOURCE_PATH / "score.py")
 EVAL_SCRIPT = os.environ.get("EVAL_PATH", SOURCE_PATH / "eval_questions.json")
 # EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 # EMBEDDING_MODEL_NAME = "sentence-transformers/LaBSE"
-EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-# EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
+# EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 # EMBEDDING_MODEL_NAME = "44WXNRFEELSLIKEPINSANDNEEDLESINMYHEART/CODE_VERONICA"
 sys.path.insert(0, str(Path(SCORE_SCRIPT).parent))
 
 
-LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("OLLAMA_MODEL", "llama3.2:3b"))
+LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("LLM_MODEL", "llama3.2:3b"))
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 
 # Flags from environment
