@@ -6,6 +6,7 @@ from config import (
     USE_RERANKER,
     USE_OLLAMA,
     EVAL_SCRIPT,
+    DEFAULT_PREDICTIONS,
 )
 from search import hybrid_search, semantic_search
 from llm import fetch_documents_for_chunks, generate_rag_answer
@@ -374,11 +375,10 @@ with tab_eval:
             if st.button("Сохранить results.json для отчёта"):
                 st.session_state["save_triggered"] = True
             if st.session_state.get("save_triggered"):
-                output_path = Path("results.json")
-                with open(output_path, "w", encoding="utf-8") as f:
+                with open(DEFAULT_PREDICTIONS, "w", encoding="utf-8") as f:
                     json.dump(
                         st.session_state["eval_predictions"], f, ensure_ascii=False, indent=2)
-                st.success(f"Файл сохранён: {output_path.absolute()}")
+                st.success(f"Файл сохранён: {DEFAULT_PREDICTIONS.absolute()}")
                 st.info(
                     "Вы можете проверить его командой: `python score.py --predictions results.json --questions eval_questions.json`"
                 )

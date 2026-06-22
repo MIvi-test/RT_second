@@ -13,11 +13,11 @@ BM25_INDEX = STORAGE_DIR / "bm25_index.pkl"
 BM25_META = STORAGE_DIR / "bm25_meta.json"
 BM25_INDEX_JAVA = STORAGE_DIR / "bm25_index_java.pkl"
 BM25_META_JAVA = STORAGE_DIR / "bm25_meta_java.json"
-DEFAULT_PREDICTIONS = SOURCE_PATH / "results.json"
 
 # Переменные окружения (оценка)
 SCORE_SCRIPT = os.environ.get("SCORE_PATH", SOURCE_PATH / "score.py")
 EVAL_SCRIPT = os.environ.get("EVAL_PATH", SOURCE_PATH / "eval_questions.json")
+DEFAULT_PREDICTIONS = SOURCE_PATH / "results.json"
 
 # Эмбеддинг модели
 # EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
