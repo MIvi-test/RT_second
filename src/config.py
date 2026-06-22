@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 import torch
+import sys
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
@@ -14,10 +15,11 @@ BM25_INDEX_JAVA = STORAGE_DIR / "bm25_index_java.pkl"
 BM25_META_JAVA = STORAGE_DIR / "bm25_meta_java.json"
 DEFAULT_PREDICTIONS = SOURCE_PATH / "results.json"
 DEFAULT_QUESTIONS = SOURCE_PATH / "eval_questions.json"
-SCORE_SCRIPT = SOURCE_PATH / "score.py"
+SCORE_SCRIPT = SOURCE_PATH
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 # EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 # EMBEDDING_MODEL_NAME = "44WXNRFEELSLIKEPINSANDNEEDLESINMYHEART/CODE_VERONICA"
+sys.path.insert(0, str(SCORE_SCRIPT))
 
 LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("OLLAMA_MODEL", "llama3.2:3b"))
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"

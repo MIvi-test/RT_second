@@ -47,7 +47,7 @@ services:
       - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=llama3.2:3b
       - PYTHONUNBUFFERED=0
-      - USE_RERANKER=true
+      - USE_RERANKER=false
       - USE_GPU=true
       - USE_OLLAMA=true
       - STORAGE_DIR=/storage

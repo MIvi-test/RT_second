@@ -52,22 +52,13 @@ __all__ = [
 ]
 
 # Подключение score.py
-if SCORE_SCRIPT is None:
-    st.error("Файл score.py не найден. Оценка Precision@5 недоступна.")
+try:
+    from score import score_question
+except ImportError:
+    st.error("Не удалось импортировать score_question из score.py")
 
     def score_question(top5, correct):
         return 0.0
-else:
-    score_dir = SCORE_SCRIPT.parent
-    if str(score_dir) not in sys.path:
-        sys.path.insert(0, str(score_dir))
-    try:
-        from score import score_question
-    except ImportError:
-        st.error("Не удалось импортировать score_question из score.py")
-
-        def score_question(top5, correct):
-            return 0.0
 
 
 def get_top5_chunk_ids(query: str) -> list[str]:

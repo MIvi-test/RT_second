@@ -143,10 +143,16 @@ def main() -> int:
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- 1. Collect chunks from all Python files ---
-    py_files = list(REPO_ROOT.rglob("*.py"))
+    py_files = set(REPO_ROOT.rglob("*.py"))
     all_chunks = []
-    print(f"[index] Scanning {len(py_files)} files …")
+    # Превращаем строки в объекты Path, чтобы set.discard() сработал
+    py_files.discard(SOURCE_PATH / "score.py")
 
+    # Для удаления содержимого __pycache__ придется пройтись циклом
+    py_files = {f for f in py_files if "__pycache__" not in f.parts}
+
+    print(f"[index] Scanning {len(py_files)} files …")
+        
     for py_file in py_files:
         all_chunks.extend(extract_chunks_from_file(py_file, REPO_ROOT))
 
