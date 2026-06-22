@@ -169,15 +169,6 @@ with st.sidebar:
     )
     st.session_state["enable_llm"] = enable_llm
 
-    st.markdown("---")
-    st.subheader("Фильтр типов (мгновенный)")
-    filter_type = st.multiselect(
-        "Показывать только",
-        options=["function", "class", "method"],
-        default=["function", "class", "method"],
-        help="Изменение фильтра не вызывает перезапуск поиска",
-    )
-
 # ---------------------- ОСНОВНАЯ ФОРМА (поиск + параметры) ----------------------
 with st.form(key="search_form"):
     query = st.text_input(
@@ -230,8 +221,7 @@ tab_results, tab_llm, tab_eval = st.tabs(
     ["Найденные фрагменты кода", "Пояснение от ИИ", "Оценка Precision@5"])
 
 if st.session_state.search_results:
-    results = [
-        r for r in st.session_state.search_results if r["type"] in filter_type]
+    results = st.session_state.search_results
     documents = st.session_state.search_documents or {}
 
     with tab_results:
