@@ -382,7 +382,7 @@ $env:LLM_MODEL_NAME="qwen3.5:9b"
 | sentence-transformers/LaBSE           | *0.589*    | semantic | -       |
 > Курсивом отмечены результаты, которые не прошли порог равный 0.6.
 
-**Подробные результаты лучшего Precision@5 BAAI/bge-m3 (result.json):**
+**Подробные результаты лучшего Precision@5 BAAI/bge-m3 (results.json):**
 
 ```json
 === CodeLens RAG -- Scoring ===
