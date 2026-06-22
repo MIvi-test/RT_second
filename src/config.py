@@ -8,18 +8,19 @@ STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
 CHROMA_PATH = STORAGE_DIR / "chroma_db"
 COLLECTION_NAME = "code_chunks"
 SOURCE_PATH = Path(os.environ.get("SOURCE_PATH", SCRIPT_DIR))
-REPO_ROOT = SOURCE_PATH
 BM25_INDEX = STORAGE_DIR / "bm25_index.pkl"
 BM25_META = STORAGE_DIR / "bm25_meta.json"
 BM25_INDEX_JAVA = STORAGE_DIR / "bm25_index_java.pkl"
 BM25_META_JAVA = STORAGE_DIR / "bm25_meta_java.json"
 DEFAULT_PREDICTIONS = SOURCE_PATH / "results.json"
 DEFAULT_QUESTIONS = SOURCE_PATH / "eval_questions.json"
-SCORE_SCRIPT = SOURCE_PATH
+SCORE_SCRIPT = os.environ.get("SCORE_PATH", SOURCE_PATH / "score.py")
+EVAL_SCRIPT = os.environ.get("EVAL_PATH", SOURCE_PATH / "eval_questions.json")
 EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 # EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 # EMBEDDING_MODEL_NAME = "44WXNRFEELSLIKEPINSANDNEEDLESINMYHEART/CODE_VERONICA"
-sys.path.insert(0, str(SCORE_SCRIPT))
+sys.path.insert(0, str(Path(SCORE_SCRIPT).parent))
+
 
 LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("OLLAMA_MODEL", "llama3.2:3b"))
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"

@@ -43,15 +43,21 @@ services:
       - ${STORAGE:-./storage}:/storage
       - ${HF_HOME:-hf_cache}:/root/.cache/huggingface
       - ${SOURCE:-./dataset_case3_v1.0_fix}:/app/dataset_case3_v1.0_fix
+      - ${SCORE_PATH:-./dataset_case3_v1.0_fix/score.py}:/app/score.py
+      - ${EVAL_PATH:-./dataset_case3_v1.0_fix/eval_questions.json}:/app/eval_questions.json
     environment:
       - OLLAMA_HOST=http://ollama:11434
       - LLM_MODEL=llama3.2:3b
-      - PYTHONUNBUFFERED=0
       - USE_RERANKER=false
       - USE_GPU=true
       - USE_OLLAMA=true
       - STORAGE_DIR=/storage
       - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/root/.cache/huggingface
+      - LOG_LEVEL=info
+      - SCORE_PATH=/app/score.py
+      - EVAL_PATH=/app/eval_questions.json
     depends_on:
       - ollama
     networks:

@@ -12,7 +12,7 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import SentenceTransformer
 
 from config import (
-    REPO_ROOT,
+    SOURCE_PATH,
     STORAGE_DIR,
     BM25_META_JAVA,
     BM25_INDEX_JAVA,
@@ -122,7 +122,6 @@ def _walk_type_node(
     })
 
     # 2. Проходим по телу типа
-    # tree-sitter хранит тело класса в узле class_body / interface_body / enum_body
     body_node = node.child_by_field_name("body")
     if body_node is None:
         return
@@ -131,7 +130,6 @@ def _walk_type_node(
         if child.type in _MEMBER_NODE_KINDS:
             # --- Метод или конструктор ---
             member_name = _node_name(child, src_bytes)
-            # Для конструктора имя совпадает с именем класса — как в старой версии
             full_member_name = f"{full_type_name}.{member_name}"
             m_start = child.start_point[0] + 1
             m_end = child.end_point[0] + 1
@@ -162,9 +160,6 @@ def _walk_type_node(
 def extract_chunks_from_java_file(java_file: Path, repo_root: Path) -> list[dict]:
     """
     Парсит один .java файл через tree-sitter и возвращает список чанков.
-    Структура чанков идентична index.py:
-      - тип целиком (class / interface / enum / record)
-      - каждый метод и конструктор
     """
     rel_path = java_file.relative_to(repo_root).as_posix()
     try:
@@ -189,27 +184,23 @@ def extract_chunks_from_java_file(java_file: Path, repo_root: Path) -> list[dict
 def tokenize_code(text: str) -> list[str]:
     """Нормализация текста для BM25 (разбивка camelCase, удаление пунктуации)."""
     text = re.sub(r"([a-z])([A-Z])", r"\1 \2", text)
-    text = re.sub(r"[^a-zA-Z0-9]", " ", text)
+    text = re.sub(r"[^a-zA-Zа-яА-Я0-9]", " ", text)
     return text.lower().split()
 
 
 def main() -> int:
-    print(f"[index_java] SOURCE_PATH : {REPO_ROOT}")
+    print(f"[index_java] SOURCE_PATH : {SOURCE_PATH}")
     print(f"[index_java] STORAGE_DIR : {STORAGE_DIR}")
-
-    if not REPO_ROOT.exists():
-        print(f"[ERROR] Repo root not found: {REPO_ROOT}")
-        return 1
 
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- 1. Сбор всех .java файлов и извлечение чанков ---
-    java_files = list(REPO_ROOT.rglob("*.java"))
+    java_files = list(SOURCE_PATH.rglob("*.java"))
     all_chunks: list[dict] = []
     print(f"[index_java] Scanning {len(java_files)} Java files …")
 
     for java_file in java_files:
-        all_chunks.extend(extract_chunks_from_java_file(java_file, REPO_ROOT))
+        all_chunks.extend(extract_chunks_from_java_file(java_file, SOURCE_PATH))
 
     if not all_chunks:
         print("[WARN] No chunks found – nothing to index.")
@@ -266,12 +257,8 @@ def main() -> int:
     try:
         client = chromadb.PersistentClient(path=str(CHROMA_PATH))
 
-        try:
-            client.delete_collection(COLLECTION_NAME)
-        except Exception:
-            pass
-
-        collection = client.create_collection(
+        # Получаем существующую или создаем новую коллекцию
+        collection = client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={
                 "hnsw:space": "cosine",
@@ -279,6 +266,12 @@ def main() -> int:
                 "hnsw:M": 32,
             },
         )
+
+        # Выборочно удаляем только старые Java-векторы по маске пути
+        try:
+            collection.delete(where={"file_path": {"$like": "%.java"}})
+        except Exception:
+            pass
 
         batch_size = 200
         for i in range(0, len(documents), batch_size):
@@ -291,7 +284,7 @@ def main() -> int:
             )
             print(f"[index_java]   batch {i}–{end}")
 
-        print(f"[index_java] ChromaDB ready – {len(documents)} vectors in '{COLLECTION_NAME}'")
+        print(f"[index_java] ChromaDB ready – Java vectors merged into '{COLLECTION_NAME}'")
     except Exception:
         print("[ERROR] ChromaDB write failed")
         traceback.print_exc()

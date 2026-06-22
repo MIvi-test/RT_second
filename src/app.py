@@ -1,13 +1,5 @@
 """Streamlit UI: поиск по коду + опциональный LLM-ответ (RAG) + оценка Precision@5."""
 
-from search import hybrid_search, semantic_search
-from llm import fetch_documents_for_chunks, generate_rag_answer
-import sys
-import streamlit as st
-import json
-import hashlib
-from pathlib import Path
-
 from config import (
     SOURCE_PATH,
     LLM_MODEL_NAME,
@@ -17,6 +9,12 @@ from config import (
     DEFAULT_QUESTIONS,
     SCORE_SCRIPT,
 )
+from search import hybrid_search, semantic_search
+from llm import fetch_documents_for_chunks, generate_rag_answer
+import streamlit as st
+import json
+from pathlib import Path
+
 
 try:
     import psutil

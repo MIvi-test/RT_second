@@ -12,10 +12,17 @@ services:
       - ${STORAGE:-./storage}:/storage
       - ${HF_HOME:-hf_cache}:/root/.cache/huggingface
       - ${SOURCE:-./dataset_case3_v1.0_fix}:/app/dataset_case3_v1.0_fix
+      - ${SCORE_PATH:-./dataset_case3_v1.0_fix/score.py}:/app/score.py
+      - ${EVAL_PATH:-./dataset_case3_v1.0_fix/eval_questions.json}:/app/eval_questions.json
     environment:
-      - PYTHONUNBUFFERED=1
       - USE_RERANKER=false
       - USE_GPU=false
       - USE_OLLAMA=false
-      - STORAGE_DIR=/app/storage
       - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
+      - STORAGE_DIR=/app/storage
+      - SCORE_PATH=/app/score.py
+      - EVAL_PATH=/app/eval_questions.json
+      - HF_TOKEN=${HF_TOKEN}
+      - HF_HOME=/root/.cache/huggingface
+      - LOG_LEVEL=info
+

@@ -133,28 +133,24 @@ def extract_chunks_from_file(py_file: Path, repo_root: Path) -> list[dict]:
 
 def main() -> int:
     print(f"[index] SOURCE_PATH : {SOURCE_PATH}")
-    print(f"[index] REPO_ROOT   : {REPO_ROOT}")
     print(f"[index] STORAGE_DIR : {STORAGE_DIR}")
-
-    if not REPO_ROOT.exists():
-        print(f"[ERROR] Repo root not found: {REPO_ROOT}")
-        return 1
 
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
     # --- 1. Collect chunks from all Python files ---
-    py_files = set(REPO_ROOT.rglob("*.py"))
+    py_files = set(SOURCE_PATH.rglob("*.py"))
     all_chunks = []
-    # Превращаем строки в объекты Path, чтобы set.discard() сработал
+    
+    # Исключаем скрипт оценки, если он есть в директории
     py_files.discard(SOURCE_PATH / "score.py")
 
-    # Для удаления содержимого __pycache__ придется пройтись циклом
+    # Удаляем содержимое __pycache__
     py_files = {f for f in py_files if "__pycache__" not in f.parts}
 
     print(f"[index] Scanning {len(py_files)} files …")
         
     for py_file in py_files:
-        all_chunks.extend(extract_chunks_from_file(py_file, REPO_ROOT))
+        all_chunks.extend(extract_chunks_from_file(py_file, SOURCE_PATH))
 
     if not all_chunks:
         print("[WARN] No chunks found – nothing to index.")
@@ -210,13 +206,9 @@ def main() -> int:
     print(f"[index] Writing ChromaDB → {CHROMA_PATH} …")
     try:
         client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-
-        try:
-            client.delete_collection(COLLECTION_NAME)  # drop stale index on re-run
-        except Exception:
-            pass
-
-        collection = client.create_collection(
+        
+        # Получаем или создаем общую коллекцию
+        collection = client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={
                 "hnsw:space": "cosine",
@@ -224,6 +216,12 @@ def main() -> int:
                 "hnsw:M": 32,
             },
         )
+
+        # Выборочно удаляем старые записи только для Python-файлов, чтобы не задеть Java
+        try:
+            collection.delete(where={"file_path": {"$like": "%.py"}})
+        except Exception:
+            pass
 
         batch_size = 200
         for i in range(0, len(documents), batch_size):
@@ -237,7 +235,7 @@ def main() -> int:
             print(f"[index]   batch {i}–{end}")
 
         print(
-            f"[index] ChromaDB ready – {len(documents)} vectors in '{COLLECTION_NAME}'"
+            f"[index] ChromaDB updated – Python vectors merged into '{COLLECTION_NAME}'"
         )
     except Exception:
         print("[ERROR] ChromaDB write failed")

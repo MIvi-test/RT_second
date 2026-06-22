@@ -197,7 +197,6 @@ uv run streamlit run app.py
 environment:
 - OLLAMA_HOST=http://ollama:11434
 - LLM_MODEL=qwen3.5:9b
-- PYTHONUNBUFFERED=1
 - USE_RERANKER=false
 - USE_GPU=false
 - USE_OLLAMA=false
