@@ -30,7 +30,10 @@ services:
       - STORAGE_DIR=/storage
       - SOURCE_PATH=/app/dataset_case3_v1.0_fix/
       - HF_TOKEN=${HF_TOKEN}
-      -
+      - LOG_LEVEL=info
+      - SCORE_PATH=/app/score.py
+      - EVAL_PATH=/app/eval_questions.json
+
     extra_hosts:
       host.docker.internal: host-gateway
     networks:
