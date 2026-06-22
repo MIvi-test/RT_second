@@ -23,7 +23,7 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-# typed module-level collection singleton
+# типизированный синглтон коллекции на уровне модуля
 _collection: Optional[Any] = None
 
 

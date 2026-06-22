@@ -137,16 +137,9 @@ def main() -> int:
 
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # --- 1. Collect chunks from all Python files ---
+    # --- 1. Сбор всех .py файлов и извлечение чанков ---
     py_files = set(SOURCE_PATH.rglob("*.py"))
     all_chunks = []
-    
-    # Исключаем скрипт оценки, если он есть в директории
-    py_files.discard(SOURCE_PATH / "score.py")
-
-    # Удаляем содержимое __pycache__
-    py_files = {f for f in py_files if "__pycache__" not in f.parts}
-
     print(f"[index] Scanning {len(py_files)} files …")
         
     for py_file in py_files:
@@ -162,7 +155,7 @@ def main() -> int:
     documents = [c["document"] for c in all_chunks]
     metadatas = [c["metadata"] for c in all_chunks]
 
-    # --- 2. BM25 keyword index ---
+    # --- 2. BM25 индекс ---
     print("[index] Building BM25 index …")
     try:
         bm25 = BM25Okapi([tokenize_code(doc) for doc in documents])
@@ -179,7 +172,7 @@ def main() -> int:
         traceback.print_exc()
         return 1
 
-    # --- 3. Compute embeddings ---
+    # --- 3. Вычисление эмбеддингов ---
     device = resolve_device()
     print(f"[index] Loading {EMBEDDING_MODEL_NAME} on {device} …")
     try:
@@ -202,7 +195,7 @@ def main() -> int:
         traceback.print_exc()
         return 1
 
-    # --- 4. Store vectors in ChromaDB ---
+    # --- 4. Запись в ChromaDB ---
     print(f"[index] Writing ChromaDB → {CHROMA_PATH} …")
     try:
         client = chromadb.PersistentClient(path=str(CHROMA_PATH))

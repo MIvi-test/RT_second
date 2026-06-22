@@ -1,13 +1,11 @@
 """Streamlit UI: поиск по коду + опциональный LLM-ответ (RAG) + оценка Precision@5."""
 
 from config import (
-    SOURCE_PATH,
     LLM_MODEL_NAME,
     USE_GPU,
     USE_RERANKER,
     USE_OLLAMA,
-    DEFAULT_QUESTIONS,
-    SCORE_SCRIPT,
+    EVAL_SCRIPT,
 )
 from search import hybrid_search, semantic_search
 from llm import fetch_documents_for_chunks, generate_rag_answer
@@ -24,8 +22,6 @@ except ImportError:
     PSUTIL_AVAILABLE = False
 
 # ---------------------- КЭШИРОВАНИЕ ----------------------
-
-
 @st.cache_resource
 def _load_search_engine():
     """Загрузить модели и индексы (кэшируется)."""
@@ -49,7 +45,7 @@ __all__ = [
     "_cached_check_ollama",
 ]
 
-# Подключение score.py
+# Импорт score_question
 try:
     from score import score_question
 except ImportError:
@@ -58,9 +54,8 @@ except ImportError:
     def score_question(top5, correct):
         return 0.0
 
-
+# список chunk_id (топ-5) для заданного запроса
 def get_top5_chunk_ids(query: str) -> list[str]:
-    """Возвращает список chunk_id (топ-5) для заданного запроса с учётом выбранного языка и перевода."""
     mode = st.session_state.get("search_mode", "hybrid")
     lang = st.session_state.get("search_lang", "python")
     use_translation = st.session_state.get("use_translation", False)
@@ -167,7 +162,8 @@ with st.sidebar:
     )
     st.session_state["enable_llm"] = enable_llm
 
-# ---------------------- ОСНОВНАЯ ФОРМА (поиск + параметры) ----------------------
+# ---------------------- ОСНОВНАЯ ФОРМА ----------------------
+# (поиск + параметры)
 with st.form(key="search_form"):
     query = st.text_input(
         "Введите поисковый запрос:",
@@ -198,7 +194,7 @@ if submitted and query.strip():
             st.error(f"Ошибка при выполнении поиска: {e}")
             raw_results = []
 
-        # Фильтр по минимальному скору (порог 0, т.е. все)
+        # Фильтр по минимальному скору (порог 0, убираем возможные отрицательные значения)
         filtered_results = [r for r in raw_results if r.get("score", 0) >= 0.0]
         st.session_state.search_results = filtered_results
         st.session_state.last_query = q_cleaned
@@ -208,8 +204,7 @@ if submitted and query.strip():
         if raw_results:
             try:
                 chunk_ids = [r["chunk_id"] for r in raw_results]
-                st.session_state.search_documents = fetch_documents_for_chunks(
-                    chunk_ids)
+                st.session_state.search_documents = fetch_documents_for_chunks(chunk_ids)
             except Exception as e:
                 st.error(f"Не удалось загрузить тексты фрагментов: {e}")
                 st.session_state.search_documents = {}
@@ -286,9 +281,8 @@ with tab_eval:
     st.markdown(
         "Метрика вычисляется по тестовому набору `eval_questions.json` с использованием логики `score.py` (допуск +-2 строки)."
     )
-    if DEFAULT_QUESTIONS is None:
-        st.error(
-            "Файл eval_questions.json не найден. Поместите его в одну из директорий проекта.")
+    if EVAL_SCRIPT is None:
+        st.error("Файл eval_questions.json не найден. Поместите его в одну из директорий проекта.")
     else:
         if "eval_running" not in st.session_state:
             st.session_state.eval_running = False
@@ -297,7 +291,7 @@ with tab_eval:
             st.session_state.eval_running = True
             try:
                 with st.spinner("Загрузка вопросов и выполнение поиска..."):
-                    with open(DEFAULT_QUESTIONS, encoding="utf-8") as f:
+                    with open(EVAL_SCRIPT, encoding="utf-8") as f:
                         questions = json.load(f)
                     predictions = []
                     progress_bar = st.progress(0)

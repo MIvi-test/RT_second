@@ -3,6 +3,7 @@ import os
 import torch
 import sys
 
+# Переменные окружения (основные)
 SCRIPT_DIR = Path(__file__).resolve().parent
 STORAGE_DIR = Path(os.environ.get("STORAGE_DIR", SCRIPT_DIR / "storage"))
 CHROMA_PATH = STORAGE_DIR / "chroma_db"
@@ -13,27 +14,30 @@ BM25_META = STORAGE_DIR / "bm25_meta.json"
 BM25_INDEX_JAVA = STORAGE_DIR / "bm25_index_java.pkl"
 BM25_META_JAVA = STORAGE_DIR / "bm25_meta_java.json"
 DEFAULT_PREDICTIONS = SOURCE_PATH / "results.json"
-DEFAULT_QUESTIONS = SOURCE_PATH / "eval_questions.json"
+
+# Переменные окружения (оценка)
 SCORE_SCRIPT = os.environ.get("SCORE_PATH", SOURCE_PATH / "score.py")
 EVAL_SCRIPT = os.environ.get("EVAL_PATH", SOURCE_PATH / "eval_questions.json")
+
+# Эмбеддинг модели
 # EMBEDDING_MODEL_NAME = "intfloat/multilingual-e5-large"
 # EMBEDDING_MODEL_NAME = "sentence-transformers/LaBSE"
 # EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 EMBEDDING_MODEL_NAME = "BAAI/bge-m3"
 # EMBEDDING_MODEL_NAME = "44WXNRFEELSLIKEPINSANDNEEDLESINMYHEART/CODE_VERONICA"
-sys.path.insert(0, str(Path(SCORE_SCRIPT).parent))
+sys.path.insert(0, str(Path(SCORE_SCRIPT).parent)) # Установка в sys
 
-
+# ЛЛМ модели
 LLM_MODEL_NAME = os.environ.get("LLM_MODEL_NAME", os.environ.get("LLM_MODEL", "llama3.2:3b"))
 RERANKER_MODEL_NAME = "BAAI/bge-reranker-v2-m3"
 
-# Flags from environment
+# Флаги окружения
 USE_GPU = os.environ.get("USE_GPU", "false").lower() not in {"0", "false", "no", "off"}
 USE_RERANKER = os.environ.get("USE_RERANKER", "false").lower() not in {"0", "false", "no", "off"}
 USE_OLLAMA = os.environ.get("USE_OLLAMA", "false").lower() not in {"0", "false", "no", "off"}
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
-
+# Выбор вычислительного устройства
 def resolve_device() -> str:
     """Return 'cuda' if GPU requested and available, else 'cpu'."""
     if USE_GPU:

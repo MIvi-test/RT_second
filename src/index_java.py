@@ -28,9 +28,7 @@ warnings.filterwarnings("ignore", message=".*__path__.*")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
 
-# ---------------------------------------------------------------------------
 # tree-sitter setup (requires tree-sitter>=0.25, tree-sitter-java)
-# ---------------------------------------------------------------------------
 import tree_sitter_java as tsjava
 from tree_sitter import Language, Parser
 

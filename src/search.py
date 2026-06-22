@@ -27,19 +27,19 @@ __all__ = [
     "tokenize_code",
 ]
 
-# Module-level singletons
+# Синглтоны на уровне модуля
 _model: Optional[SentenceTransformer] = None
 _collection: Optional[chromadb.Collection] = None
 _reranker: Optional[CrossEncoder] = None
 _device: Optional[str] = None
 
-# BM25 indices (language‑specific)
+# Индексы BM25 (для конкретных языков программирования)
 _bm25_python: Optional[Any] = None
 _bm25_meta_python: Optional[dict] = None
 _bm25_java: Optional[Any] = None
 _bm25_meta_java: Optional[dict] = None
 
-# Method name constants
+# Константы названий методов
 METHOD_SEMANTIC = "semantic"
 METHOD_HYBRID = "hybrid"
 METHOD_SUFFIX_RERANK = " + reranker"
@@ -134,7 +134,7 @@ def _load_bm25(lang: str):
 def _ensure_loaded() -> bool:
     """Legacy function: loads core components and Python BM25."""
     _init_core()
-    _load_bm25("python")  # preload Python BM25 for compatibility
+    _load_bm25("python")  # предварительная загрузка Python BM25 для совместимости
     return True
 
 
