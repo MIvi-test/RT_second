@@ -24,7 +24,7 @@ RT_second/
 ├── src/
 │   ├── app.py               # Streamlit UI
 │   ├── index.py             # AST-парсинг, эмбеддинги, ChromaDB + BM25
-│   ├── index_java.py        # # Tree-sitter парсинг, эмбеддинги, ChromaDB + BM25
+│   ├── index_java.py        # Tree-sitter парсинг, эмбеддинги, ChromaDB + BM25
 │   ├── search.py            # semantic_search, hybrid_search
 │   ├── llm.py               # RAG через Ollama (generate_rag_answer)
 │   └── settings.py          # USE_GPU, USE_RERANKER, resolve_device()
@@ -147,7 +147,7 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 Установить uv как переменную окружения path, если это не произошло автоматически:
 
 ```PowerShell
-#временно (на текущую сессию в powershell)
+# временно (на текущую сессию в powershell)
 $env:Path += ";C:\путь\к\папке\с\uv"
 ```
 
@@ -382,6 +382,43 @@ $env:LLM_MODEL_NAME="qwen3.5:9b"
 | sentence-transformers/LaBSE           | *0.589*    | semantic | -       |
 > Курсивом отмечены результаты, которые не прошли порог равный 0.6.
 
+**Подробные результаты лучшего Precision@5 BAAI/bge-m3 (result.json):**
+
+```json
+=== CodeLens RAG -- Scoring ===
+
+Questions evaluated: 15
+Mean Precision@5: 0.800
+
+By difficulty:
+  easy     0.900 (5 questions)
+  medium   0.833 (6 questions)
+  hard     0.625 (4 questions)
+
+By language:
+  ru: 0.792 (8 questions)
+  en: 0.810 (7 questions)
+
+Per-question detail:
+  q_01 [easy, ru] -- 1/2 expected in top-5 -> 0.50
+  q_02 [hard, en] -- 2/3 expected in top-5 -> 0.67
+  q_03 [easy, ru] -- 2/2 expected in top-5 -> 1.00
+  q_04 [medium, en] -- 2/2 expected in top-5 -> 1.00
+  q_05 [medium, ru] -- 2/2 expected in top-5 -> 1.00
+  q_06 [hard, en] -- 2/2 expected in top-5 -> 1.00
+  q_07 [easy, ru] -- 1/1 expected in top-5 -> 1.00
+  q_08 [medium, en] -- 2/3 expected in top-5 -> 0.67
+  q_09 [easy, ru] -- 1/1 expected in top-5 -> 1.00
+  q_10 [easy, en] -- 1/1 expected in top-5 -> 1.00
+  q_11 [medium, ru] -- 1/3 expected in top-5 -> 0.33
+  q_12 [medium, en] -- 2/2 expected in top-5 -> 1.00
+  q_13 [medium, ru] -- 1/1 expected in top-5 -> 1.00
+  q_14 [hard, en] -- 1/3 expected in top-5 -> 0.33
+  q_15 [hard, ru] -- 1/2 expected in top-5 -> 0.50
+
+Total score: 0.800
+```
+
 ---
 ### Дополнительные результаты
 
@@ -392,6 +429,7 @@ $env:LLM_MODEL_NAME="qwen3.5:9b"
 | intfloat/multilingual-e5-large            | 0.692       | *0.589*    | 2.3 GB     | 3                       |
 | **paraphrase-multilingual-MiniLM-L12-v2** | 0.667       | 0.633      | **0.5 GB** | **0.714**               |
 | sentence-transformers/LaBSE               | *0.570*     | *0.544*    | 1.9 GB     | 3.226                   |
+
 Модели, которые имеют своё применение:
 - Модель **paraphrase-multilingual-MiniLM-L12-v2** является наиболее эффективной, если учитывать размер, что может быть полезно при ограниченных ресурсах или быстром развертывании
 - Модель **44WXNRFEELSLIKEPINSANDNEEDLESINMYHEART/CODE_VERONICA** показывает самый стабильный результат, который не зависит от конкретного решения индексации и архитектуры системы в целом.
