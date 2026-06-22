@@ -270,7 +270,7 @@ if st.session_state.search_results:
                             )
                         except Exception as e:
                             st.session_state.llm_answer = f"Ошибка генерации ответа: {e}"
-                st.subheader("Сгенерированный ответ архитектора")
+                st.subheader("LLM ответ")
                 st.markdown(st.session_state.llm_answer)
         else:
             st.info(
