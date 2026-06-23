@@ -40,7 +40,7 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ${STORAGE:-./storage}:/storage
+      - ${BD_PATH:-./storage}:/storage
       - ${HF_HOME:-hf_cache}:/root/.cache/huggingface
       - ${SOURCE:-./dataset_case3_v1.0_fix}:/app/dataset_case3_v1.0_fix
       - ${SCORE_PATH:-./dataset_case3_v1.0_fix/score.py}:/app/score.py
